@@ -41,10 +41,10 @@ async def daily_recap():
         header = lines[0].strip().upper()
         msg_time = msg.created_at.time()
 
-        if header == "OPENING" and msg_time < time(10,0):
+        if header == "OPENING" and msg_time <= time(13,0):
             opening[msg.author.name] = 1
 
-        if header == "CLOSING" and msg_time > time(15,0):
+        if header == "CLOSING" and msg_time >= time(16,0):
             closing[msg.author.name] = 1
 
     users = set(opening.keys()) | set(closing.keys())
