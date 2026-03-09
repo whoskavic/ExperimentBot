@@ -2,7 +2,8 @@ import discord
 import csv
 import os
 import pytz
-import time
+import asyncio
+import io
 from datetime import datetime, time as dtime
 from discord.ext import tasks
 from flask import Flask
@@ -10,7 +11,8 @@ from threading import Thread
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 CHANNEL_ID = int(os.environ["CHANNEL_ID"])
-
+print(f"TOKEN: {TOKEN}")
+print(f"CHANNEL_ID: {CHANNEL_ID}")
 # ===== DISCORD SETUP =====
 intents = discord.Intents.default()
 intents.message_content = True
@@ -34,119 +36,106 @@ def run():
 
 def keep_alive():
     t = Thread(target=run)
+    t.daemon = True
     t.start()
 
 # ===== RECAP FUNCTION =====
 async def generate_recap(channel):
-
     now = datetime.now(tz)
     today = now.date()
-
     opening = {}
     closing = {}
-
     start_of_day = tz.localize(datetime.combine(today, dtime.min))
 
-    async for msg in channel.history(after=start_of_day):
-
+    async for msg in channel.history(after=start_of_day, limit=500):
         msg_time = msg.created_at.astimezone(tz)
-
         if msg_time.date() != today:
             continue
-
         lines = msg.content.splitlines()
         if not lines:
             continue
-
         header = lines[0].strip().upper()
-
         user = msg.author.display_name
-
         if header == "OPENING" and msg_time.time() < dtime(10, 0):
             opening[user] = 1
-
         if header == "CLOSING" and msg_time.time() > dtime(15, 0):
             closing[user] = 1
 
     users = sorted(set(opening.keys()) | set(closing.keys()))
 
-    filename = f"recap_{today}.csv"
+    # Tulis CSV langsung ke memory, tidak menyentuh disk sama sekali
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["date", "user", "opening", "closing"])
+    for u in users:
+        writer.writerow([
+            today,
+            u.upper(),
+            1 if opening.get(u) else 0,
+            1 if closing.get(u) else 0
+        ])
 
-    with open(filename, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["date", "user", "opening", "closing"])
-
-        for u in users:
-            writer.writerow([
-                today,
-                u.upper(),
-                1 if opening.get(u) else 0,
-                1 if closing.get(u) else 0
-            ])
-
-    return filename, today
-
+    buffer.seek(0)
+    discord_file = discord.File(fp=io.BytesIO(buffer.getvalue().encode()), filename=f"recap_{today}.csv")
+    return discord_file, today
 
 # ===== BOT READY =====
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user}")
-    recap_task.start()
-
+    if not recap_task.is_running():
+        recap_task.start()
 
 # ===== TEST COMMAND =====
 @client.event
 async def on_message(message):
-
     if message.author == client.user:
         return
-
     if message.content.lower() == "!recap":
-
         await message.channel.send("Generating recap...")
-
-        filename, today = await generate_recap(message.channel)
-
-        await message.channel.send(
-            f"Recap {today}",
-            file=discord.File(filename)
-        )
-
+        discord_file, today = await generate_recap(message.channel)
+        await message.channel.send(f"Recap {today}", file=discord_file)
 
 # ===== AUTO TASK JAM 16:00 =====
 @tasks.loop(minutes=1)
 async def recap_task():
-
     global last_run_date
-
     now = datetime.now(tz)
-
     if now.hour != 16 or now.minute != 0:
         return
-
     if last_run_date == now.date():
         return
-
     last_run_date = now.date()
-
     channel = client.get_channel(CHANNEL_ID)
-
     if channel is None:
         print("Channel not found")
         return
-
     print("Generating automatic recap...")
+    discord_file, today = await generate_recap(channel)
+    await channel.send(f"Daily Recap {today}", file=discord_file)
 
-    filename, today = await generate_recap(channel)
-
-    await channel.send(
-        f"Daily Recap {today}",
-        file=discord.File(filename)
-    )
-
-
-# ===== START BOT =====
-time.sleep(10)  # prevent login spam on Render
+# ===== START BOT WITH RETRY =====
+async def start_bot():
+    """Login dengan retry + exponential backoff untuk handle rate limits."""
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempting to connect (attempt {attempt + 1}/{max_retries})...")
+            await client.start(TOKEN)
+            break
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                wait_time = (2 ** attempt) * 15  # 15s, 30s, 60s, 120s, 240s
+                print(f"Rate limited! Waiting {wait_time}s before retry...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(30)
+            else:
+                raise
 
 keep_alive()
-client.run(TOKEN)
+asyncio.run(start_bot())
