@@ -123,11 +123,13 @@ async def recap_task():
 
 # ===== START BOT WITH RETRY =====
 async def start_bot():
+    print("start_bot() called")
     max_retries = 5
     for attempt in range(max_retries):
         try:
             print(f"Attempting to connect (attempt {attempt + 1}/{max_retries})...")
             await client.start(TOKEN)
+            print("client.start() returned normally")
             break
         except discord.errors.HTTPException as e:
             print(f"HTTPException: status={e.status}, code={e.code}, text={e.text}")
@@ -136,16 +138,21 @@ async def start_bot():
                 print(f"Rate limited! Waiting {wait_time}s before retry...")
                 await asyncio.sleep(wait_time)
             else:
+                print(f"Non-429 HTTP error, stopping.")
                 raise
         except discord.errors.LoginFailure as e:
-            print(f"LoginFailure: {e}")  # Token salah/invalid
+            print(f"LoginFailure: {e}")
             break
-        except Exception as e:
-            print(f"Unexpected error: {type(e).__name__}: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(30)
-            else:
-                raise
+        except SystemExit as e:
+            print(f"SystemExit caught: {e}")
+            break
+        except BaseException as e:   # <-- tangkap SEMUA termasuk KeyboardInterrupt
+            import traceback
+            print(f"BaseException: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            break
+
+    print("start_bot() loop ended")
 
 print("=== BOT STARTING ===")
 try:
