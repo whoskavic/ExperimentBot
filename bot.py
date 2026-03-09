@@ -11,8 +11,7 @@ from threading import Thread
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 CHANNEL_ID = int(os.environ["CHANNEL_ID"])
-print(f"TOKEN: {TOKEN}")
-print(f"CHANNEL_ID: {CHANNEL_ID}")
+
 # ===== DISCORD SETUP =====
 intents = discord.Intents.default()
 intents.message_content = True
@@ -116,7 +115,6 @@ async def recap_task():
 
 # ===== START BOT WITH RETRY =====
 async def start_bot():
-    """Login dengan retry + exponential backoff untuk handle rate limits."""
     max_retries = 5
     for attempt in range(max_retries):
         try:
@@ -124,14 +122,18 @@ async def start_bot():
             await client.start(TOKEN)
             break
         except discord.errors.HTTPException as e:
+            print(f"HTTPException: status={e.status}, code={e.code}, text={e.text}")
             if e.status == 429:
-                wait_time = (2 ** attempt) * 15  # 15s, 30s, 60s, 120s, 240s
+                wait_time = (2 ** attempt) * 15
                 print(f"Rate limited! Waiting {wait_time}s before retry...")
                 await asyncio.sleep(wait_time)
             else:
                 raise
+        except discord.errors.LoginFailure as e:
+            print(f"LoginFailure: {e}")  # Token salah/invalid
+            break
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            print(f"Unexpected error: {type(e).__name__}: {e}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(30)
             else:
