@@ -7,8 +7,8 @@ from discord.ext import tasks
 from flask import Flask
 from threading import Thread
 
-TOKEN = os.environ["MTQ4MDQyOTA5OTYxMTcyMTc0OA.GotVqW.4UK-DOJAKOYPuphtPlHfv0phUDQDdqMqmMIxWo"]
-CHANNEL_ID = int(os.environ["1480432967607259187"])
+TOKEN = os.environ["DISCORD_TOKEN"]
+CHANNEL_ID = int(os.environ["CHANNEL_ID"])
 
 intents = discord.Intents.default()
 intents.message_content = True
