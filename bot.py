@@ -154,6 +154,23 @@ async def start_bot():
 
     print("start_bot() loop ended")
 
+# ===== TEST KONEKSI KE DISCORD =====
+import aiohttp
+
+async def test_discord_connection():
+    print("Testing connection to Discord API...")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://discord.com/api/v10/gateway") as resp:
+                print(f"Discord API response: {resp.status}")
+                text = await resp.text()
+                print(f"Response body: {text[:200]}")
+    except Exception as e:
+        print(f"Connection test failed: {type(e).__name__}: {e}")
+
+asyncio.run(test_discord_connection())
+
+# ===== START =====
 print("=== BOT STARTING ===")
 try:
     keep_alive()
