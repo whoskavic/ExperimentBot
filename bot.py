@@ -34,6 +34,64 @@ async def on_ready():
     print(f'Logged in as {client.user}')
     recap_task.start()
 
+# ===== TEST COMMAND =====
+@client.event
+async def on_message(message):
+
+    if message.author == client.user:
+        return
+
+    if message.content.lower() == "!recap":
+
+        await message.channel.send("Generating recap...")
+
+        tz = pytz.timezone("Asia/Jakarta")
+        now = datetime.now(tz)
+        today = now.date()
+
+        opening = {}
+        closing = {}
+
+        async for msg in message.channel.history(limit=1000):
+
+            msg_time = msg.created_at.astimezone(tz)
+
+            if msg_time.date() != today:
+                continue
+
+            lines = msg.content.splitlines()
+            if not lines:
+                continue
+
+            header = lines[0].strip().upper()
+
+            if header == "OPENING" and msg_time.time() < time(10,0):
+                opening[msg.author.name] = 1
+
+            if header == "CLOSING" and msg_time.time() > time(15,0):
+                closing[msg.author.name] = 1
+
+        users = set(opening.keys()) | set(closing.keys())
+
+        filename = f"recap_test_{today}.csv"
+
+        with open(filename,"w",newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["date","user","opening","closing"])
+
+            for u in users:
+                writer.writerow([
+                    today,
+                    u.upper(),
+                    1 if opening.get(u) else 0,
+                    1 if closing.get(u) else 0
+                ])
+
+        await message.channel.send(
+            "Test recap generated",
+            file=discord.File(filename)
+        )
+
 # ===== TASK JAM 16:00 =====
 @tasks.loop(minutes=1)
 async def recap_task():
