@@ -11,6 +11,8 @@ from threading import Thread
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 CHANNEL_ID = int(os.environ["CHANNEL_ID"])
+print(f"TOKEN loaded: {TOKEN[:10]}...")
+print(f"CHANNEL_ID loaded: {CHANNEL_ID}")
 
 # ===== DISCORD SETUP =====
 intents = discord.Intents.default()
@@ -139,10 +141,17 @@ async def start_bot():
             else:
                 raise
 
+print("=== BOT STARTING ===")
+keep_alive()
+print("=== KEEP ALIVE STARTED ===")
+
 try:
-    keep_alive()
     asyncio.run(start_bot())
+except KeyboardInterrupt:
+    print("Interrupted by user")
 except Exception as e:
+    import traceback
     print(f"Top-level error: {type(e).__name__}: {e}")
+    traceback.print_exc()
 finally:
-    print("Process ending")
+    print("=== PROCESS ENDING ===")
