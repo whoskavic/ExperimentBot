@@ -33,7 +33,13 @@ def home():
     return "Discord bot is running"
 
 def run():
-    app.run(host="0.0.0.0", port=10000)
+    for port in [10000, 10001, 10002]:
+        try:
+            print(f"Trying Flask on port {port}...")
+            app.run(host="0.0.0.0", port=port)
+            break
+        except OSError:
+            print(f"Port {port} busy, trying next...")
 
 def keep_alive():
     t = Thread(target=run)
@@ -142,13 +148,18 @@ async def start_bot():
                 raise
 
 print("=== BOT STARTING ===")
-keep_alive()
-print("=== KEEP ALIVE STARTED ===")
+try:
+    keep_alive()
+    print("=== KEEP ALIVE STARTED ===")
+except Exception as e:
+    import traceback
+    print(f"keep_alive error: {type(e).__name__}: {e}")
+    traceback.print_exc()
 
 try:
     asyncio.run(start_bot())
 except KeyboardInterrupt:
-    print("Interrupted by user")
+    print("Interrupted")
 except Exception as e:
     import traceback
     print(f"Top-level error: {type(e).__name__}: {e}")
