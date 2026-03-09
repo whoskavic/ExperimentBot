@@ -1,15 +1,14 @@
 import discord
 import csv
-import os
 import pytz
-import time
 from datetime import datetime, time as dtime
 from discord.ext import tasks
 from flask import Flask
 from threading import Thread
 
-TOKEN = os.environ["DISCORD_TOKEN"]
-CHANNEL_ID = int(os.environ["CHANNEL_ID"])
+# ===== CONFIG =====
+TOKEN = "MTQ4MDQyOTA5OTYxMTcyMTc0OA.GEcNvp.Ax6bxfhk9-0hXNa03MbNiUNPL9rKuayBSspgIk"
+CHANNEL_ID = 1480432967607259187
 
 # ===== DISCORD SETUP =====
 intents = discord.Intents.default()
@@ -19,24 +18,29 @@ client = discord.Client(intents=intents)
 # ===== TIMEZONE =====
 tz = pytz.timezone("Asia/Jakarta")
 
-# ===== RUN STATE =====
+# ===== STATE =====
 last_run_date = None
 
-# ===== Flask server agar Render tidak sleep =====
-app = Flask('')
+# ===== Flask keep alive =====
+app = Flask(__name__)
 
-@app.route('/')
+
+@app.route("/")
 def home():
-    return "Discord bot is running"
+    return "Bot is alive"
 
-def run():
-    app.run(host="0.0.0.0", port=10000)
+
+def run_web():
+    app.run(host="0.0.0.0", port=8080)
+
 
 def keep_alive():
-    t = Thread(target=run)
+    t = Thread(target=run_web)
+    t.daemon = True
     t.start()
 
-# ===== RECAP FUNCTION =====
+
+# ===== RECAP GENERATOR =====
 async def generate_recap(channel):
 
     now = datetime.now(tz)
@@ -51,21 +55,22 @@ async def generate_recap(channel):
 
         msg_time = msg.created_at.astimezone(tz)
 
-        if msg_time.date() != today:
-            continue
-
         lines = msg.content.splitlines()
         if not lines:
             continue
 
         header = lines[0].strip().upper()
-
         user = msg.author.display_name
 
-        if header == "OPENING" and msg_time.time() < dtime(10, 0):
+        # contoh header:
+        # "SENIN, 09 MARET 2026 - OPENING"
+
+        # OPENING jika <= 18:00 dan header mengandung OPENING
+        if "OPENING" in header and msg_time.time() <= dtime(18, 0):
             opening[user] = 1
 
-        if header == "CLOSING" and msg_time.time() > dtime(15, 0):
+        # CLOSING jika >= 20:00 dan header mengandung CLOSING
+        if "CLOSING" in header and msg_time.time() >= dtime(20, 0):
             closing[user] = 1
 
     users = sorted(set(opening.keys()) | set(closing.keys()))
@@ -79,8 +84,7 @@ async def generate_recap(channel):
         for u in users:
             writer.writerow([
                 today,
-                u.upper(),
-                1 if opening.get(u) else 0,
+                u.upper(), 1 if opening.get(u) else 0,
                 1 if closing.get(u) else 0
             ])
 
@@ -94,7 +98,7 @@ async def on_ready():
     recap_task.start()
 
 
-# ===== TEST COMMAND =====
+# ===== COMMAND TEST =====
 @client.event
 async def on_message(message):
 
@@ -107,13 +111,11 @@ async def on_message(message):
 
         filename, today = await generate_recap(message.channel)
 
-        await message.channel.send(
-            f"Recap {today}",
-            file=discord.File(filename)
-        )
+        await message.channel.send(f"Recap {today}",
+                                   file=discord.File(filename))
 
 
-# ===== AUTO TASK JAM 16:00 =====
+# ===== AUTO RECAP 16:00 =====
 @tasks.loop(minutes=1)
 async def recap_task():
 
@@ -135,18 +137,11 @@ async def recap_task():
         print("Channel not found")
         return
 
-    print("Generating automatic recap...")
-
     filename, today = await generate_recap(channel)
 
-    await channel.send(
-        f"Daily Recap {today}",
-        file=discord.File(filename)
-    )
+    await channel.send(f"Daily Recap {today}", file=discord.File(filename))
 
 
-# ===== START BOT =====
-time.sleep(10)  # prevent login spam on Render
-
+# ===== START =====
 keep_alive()
 client.run(TOKEN)
