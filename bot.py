@@ -139,5 +139,10 @@ async def start_bot():
             else:
                 raise
 
-keep_alive()
-asyncio.run(start_bot())
+try:
+    keep_alive()
+    asyncio.run(start_bot())
+except Exception as e:
+    print(f"Top-level error: {type(e).__name__}: {e}")
+finally:
+    print("Process ending")
