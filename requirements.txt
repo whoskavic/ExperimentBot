@@ -1,4 +1,6 @@
 discord.py
+discord
 flask
 pytz
 aiohttp
+openpyxl
