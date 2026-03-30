@@ -1,0 +1,32 @@
+### Recap Hari Ini
+POST http://localhost:8080/recap
+Content-Type: application/json
+
+{}
+
+###
+
+### Recap Custom Range
+POST http://localhost:8080/recap
+Content-Type: application/json
+
+{
+    "date_from": "2026-03-01",
+    "date_to": "2026-03-09"
+}
+
+###
+
+### Recap 1 Hari Spesifik
+POST http://localhost:8080/recap
+Content-Type: application/json
+
+{
+    "date_from": "2026-03-09",
+    "date_to": "2026-03-09"
+}
+
+###
+
+### Health Check
+GET http://localhost:8080/
