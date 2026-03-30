@@ -7,4 +7,5 @@ destination_channel = id destinasi rekap report mau di send kemana
 recap_hour = di jam berapa (format 24) laporan akan dikirim
 recap_minute = di menit berapa laporan akan dikirim (kombinasi jam dan menit)
 
-file user.json itu untuk mapping Discord ID dengan nama karyawan
+file user.json itu untuk mapping Discord ID dengan nama karyawan dengan format:
+"DISCORD_ID": "NAMA"
