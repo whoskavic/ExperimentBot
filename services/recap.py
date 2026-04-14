@@ -21,14 +21,23 @@ def _end_of_day(d: date) -> datetime:
     return TZ.localize(datetime.combine(d, dtime(23, 59, 59)))
 
 
+# ── time boundaries ───────────────────────────────────────
+
+_OPEN_LATE  = dtime(10, 0, 0)   # opening dianggap telat jika > 10:00
+_CLOSE_LATE = dtime(20, 0, 0)   # closing dianggap telat jika > 20:00
+
+
 # ── single source, full date range (1 API call) ───────────
 
-async def _collect_range(source, date_from: date, date_to: date) -> dict[date, tuple[dict, dict]]:
+# daily structure: {date: {user: {"op": bool, "cl": bool, "op_late": bool, "cl_late": bool}}}
+type DayData = dict[str, dict[str, bool]]
+
+async def _collect_range(source, date_from: date, date_to: date) -> dict[date, DayData]:
     """
     Fetch semua pesan dari 1 source untuk seluruh range dalam 1 API call.
-    Return: {date: (opening_dict, closing_dict)}
+    Return: {date: {user: {op, cl, op_late, cl_late}}}
     """
-    daily: dict[date, tuple[dict, dict]] = {}
+    daily: dict[date, DayData] = {}
 
     after  = _start_of_day(date_from)
     before = _end_of_day(date_to)
@@ -36,6 +45,7 @@ async def _collect_range(source, date_from: date, date_to: date) -> dict[date, t
     async for msg in source.history(after=after, before=before, limit=None):
         msg_time = msg.created_at.astimezone(TZ)
         msg_date = msg_time.date()
+        t        = msg_time.time()
 
         lines = msg.content.splitlines()
         if not lines:
@@ -45,14 +55,23 @@ async def _collect_range(source, date_from: date, date_to: date) -> dict[date, t
         user   = resolve_name(msg.author)
 
         if msg_date not in daily:
-            daily[msg_date] = ({}, {})
-        opening, closing = daily[msg_date]
+            daily[msg_date] = {}
+        if user not in daily[msg_date]:
+            daily[msg_date][user] = {"op": False, "cl": False, "op_late": False, "cl_late": False}
 
-        if ("OPENING" in header or "OPEN" in header) and msg_time.time() <= dtime(10, 59, 59):
-            opening[user] = 1
+        entry = daily[msg_date][user]
 
-        if ("CLOSING" in header or "CLOSE" in header) and dtime(10, 59, 59) <= msg_time.time() <= dtime(20, 59, 59):
-            closing[user] = 1
+        if "OPENING" in header or "OPEN" in header:
+            if t > _OPEN_LATE:
+                entry["op_late"] = True
+            else:
+                entry["op"] = True
+
+        if "CLOSING" in header or "CLOSE" in header:
+            if t > _CLOSE_LATE:
+                entry["cl_late"] = True
+            else:
+                entry["cl"] = True
 
     return daily
 
@@ -70,19 +89,21 @@ async def generate_recap(source, date_from: date, date_to: date) -> str:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Recap"
-    ws.append(["date", "source", "user", "opening", "closing"])
+    ws.append(["date", "source", "user", "opening", "opening_late", "closing", "closing_late"])
 
     current = date_from
     while current <= date_to:
-        opening, closing = daily.get(current, ({}, {}))
-        users = sorted(set(opening) | set(closing))
-        for u in users:
+        day_data = daily.get(current, {})
+        for u in sorted(day_data):
+            e = day_data[u]
             ws.append([
                 str(current),
                 source.name,
                 u,
-                1 if opening.get(u) else 0,
-                1 if closing.get(u) else 0,
+                1 if e["op"] else 0,
+                1 if e["op_late"] else 0,
+                1 if e["cl"] else 0,
+                1 if e["cl_late"] else 0,
             ])
         current += timedelta(days=1)
 
@@ -127,7 +148,7 @@ def build_all_channel_xlsx(results: list[tuple[str, str]], date_from: date, date
     wb_all = openpyxl.Workbook()
     ws_all = wb_all.active
     ws_all.title = "All Channels"
-    ws_all.append(["date", "source", "user", "opening", "closing"])
+    ws_all.append(["date", "source", "user", "opening", "opening_late", "closing", "closing_late"])
 
     for filepath, _ in results:
         wb = openpyxl.load_workbook(filepath)
