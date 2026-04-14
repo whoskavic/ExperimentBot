@@ -11,7 +11,7 @@ TOKEN                = _config["bot_token"]
 CHANNEL_IDS          = _config["channel_ids"]
 THREAD_IDS           = _config["thread_ids"]
 DESTINATION_CHANNEL  = _config["destination_channel"]
-RECAP_HOUR           = _config.get("recap_hour", 21)
-RECAP_MINUTE         = _config.get("recap_minute", 0)
+RECAP_HOUR           = _config.get("recap_hour", 23)
+RECAP_MINUTE         = _config.get("recap_minute", 59)
 
 TZ = pytz.timezone("Asia/Jakarta")

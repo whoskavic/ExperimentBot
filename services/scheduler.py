@@ -1,7 +1,7 @@
 from datetime import datetime, date, timedelta
 
 from config import TZ, DESTINATION_CHANNEL, RECAP_HOUR, RECAP_MINUTE
-from services.recap import run_all_recaps, send_recaps
+from services.recap import run_all_recaps, send_recaps_scheduled
 
 
 async def schedule_recap(client):
@@ -33,4 +33,4 @@ async def schedule_recap(client):
             await dest.send("Tidak ada data recap hari ini.")
             continue
 
-        await send_recaps(dest, results, today, today)
+        await send_recaps_scheduled(dest, results, today, today)

@@ -116,9 +116,9 @@ async def generate_recap(source, date_from: date, date_to: date) -> str:
 
 # ── run all sources, date range ───────────────────────────
 
-async def run_all_recaps(client, date_from: date, date_to: date) -> list[tuple[str, str]]:
+async def run_all_recaps(client, date_from: date, date_to: date) -> list[tuple[str, object]]:
     """
-    Return list of (filepath, source_name) untuk semua channel + thread.
+    Return list of (filepath, source_channel) untuk semua channel + thread.
     Semua source diproses secara paralel.
     """
     all_ids = [(cid, "channel") for cid in CHANNEL_IDS] + \
@@ -139,12 +139,12 @@ async def run_all_recaps(client, date_from: date, date_to: date) -> list[tuple[s
         *[generate_recap(src, date_from, date_to) for src in sources]
     )
 
-    return list(zip(filepaths, [s.name for s in sources]))
+    return list(zip(filepaths, sources))
 
 
 # ── build all_channel.xlsx ────────────────────────────────
 
-def build_all_channel_xlsx(results: list[tuple[str, str]], date_from: date, date_to: date) -> str:
+def build_all_channel_xlsx(results: list[tuple[str, object]], date_from: date, date_to: date) -> str:
     wb_all = openpyxl.Workbook()
     ws_all = wb_all.active
     ws_all.title = "All Channels"
@@ -164,28 +164,50 @@ def build_all_channel_xlsx(results: list[tuple[str, str]], date_from: date, date
 
 # ── send to Discord & cleanup ─────────────────────────────
 
-async def send_recaps(dest, results: list[tuple[str, str]], date_from: date, date_to: date) -> list[str]:
-    """Kirim semua file ke dest channel, hapus file lokal setelah kirim."""
+async def send_recaps(dest, results: list[tuple[str, object]], date_from: date, date_to: date) -> list[str]:
+    """Kirim semua file ke dest channel (manual/API), hapus file lokal setelah kirim."""
     label = f"`{date_from}`" if date_from == date_to else f"`{date_from}` s/d `{date_to}`"
 
-    # build all_channel first (needs individual files still present)
     all_filename = build_all_channel_xlsx(results, date_from, date_to)
 
     sent: list[str] = []
 
-    for filepath, source_name in results:
+    for filepath, source in results:
         await dest.send(
-            f"📋 Recap {label} — **#{source_name}**",
+            f"Recap {label} — **#{source.name}**",
             file=discord.File(filepath)
         )
         sent.append(filepath)
         os.remove(filepath)
 
     await dest.send(
-        f"📋 Recap {label} — **All Channels**",
+        f"Recap {label} — **All Channels**",
         file=discord.File(all_filename)
     )
     sent.append(all_filename)
     os.remove(all_filename)
 
     return sent
+
+
+async def send_recaps_scheduled(dest, results: list[tuple[str, object]], date_from: date, date_to: date) -> None:
+    """
+    Kirim recap scheduler: tiap file ke source channel-nya masing-masing,
+    all_channel dikirim ke dest (destination_channel).
+    """
+    label = f"`{date_from}`" if date_from == date_to else f"`{date_from}` s/d `{date_to}`"
+
+    all_filename = build_all_channel_xlsx(results, date_from, date_to)
+
+    for filepath, source in results:
+        await source.send(
+            f"Recap {label} — **#{source.name}**",
+            file=discord.File(filepath)
+        )
+        os.remove(filepath)
+
+    await dest.send(
+        f"Recap {label} — **All Channels**",
+        file=discord.File(all_filename)
+    )
+    os.remove(all_filename)
