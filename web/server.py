@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from datetime import date, datetime
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -6,7 +7,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from config import TZ, DESTINATION_CHANNEL
 from services.recap import run_all_recaps, send_recaps
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__, static_folder="static", static_url_path="")
 
 # injected from bot.py at startup
 _discord_client = None
@@ -53,7 +54,9 @@ def trigger_recap():
         files = future.result(timeout=120)
         return jsonify({"status": "ok", "date_from": str(date_from), "date_to": str(date_to), "files": files})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        traceback.print_exc()
+        msg = str(e) or type(e).__name__
+        return jsonify({"status": "error", "message": msg}), 500
 
 
 async def _do_recap(date_from: date, date_to: date) -> list[str]:

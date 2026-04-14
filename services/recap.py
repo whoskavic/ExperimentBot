@@ -1,3 +1,4 @@
+import asyncio
 import os
 import discord
 import openpyxl
@@ -20,18 +21,22 @@ def _end_of_day(d: date) -> datetime:
     return TZ.localize(datetime.combine(d, dtime(23, 59, 59)))
 
 
-# ── single source, single day ─────────────────────────────
+# ── single source, full date range (1 API call) ───────────
 
-async def _collect_day(source, target_date: date) -> tuple[dict, dict]:
-    """Baca pesan dari 1 source untuk 1 hari. Return (opening, closing)."""
-    opening: dict[str, int] = {}
-    closing:  dict[str, int] = {}
+async def _collect_range(source, date_from: date, date_to: date) -> dict[date, tuple[dict, dict]]:
+    """
+    Fetch semua pesan dari 1 source untuk seluruh range dalam 1 API call.
+    Return: {date: (opening_dict, closing_dict)}
+    """
+    daily: dict[date, tuple[dict, dict]] = {}
 
-    after  = _start_of_day(target_date)
-    before = _end_of_day(target_date)
+    after  = _start_of_day(date_from)
+    before = _end_of_day(date_to)
 
     async for msg in source.history(after=after, before=before, limit=None):
         msg_time = msg.created_at.astimezone(TZ)
+        msg_date = msg_time.date()
+
         lines = msg.content.splitlines()
         if not lines:
             continue
@@ -39,13 +44,17 @@ async def _collect_day(source, target_date: date) -> tuple[dict, dict]:
         header = lines[0].strip().upper()
         user   = resolve_name(msg.author)
 
+        if msg_date not in daily:
+            daily[msg_date] = ({}, {})
+        opening, closing = daily[msg_date]
+
         if ("OPENING" in header or "OPEN" in header) and msg_time.time() <= dtime(10, 59, 59):
             opening[user] = 1
 
         if ("CLOSING" in header or "CLOSE" in header) and dtime(10, 59, 59) <= msg_time.time() <= dtime(20, 59, 59):
             closing[user] = 1
 
-    return opening, closing
+    return daily
 
 
 # ── generate xlsx for 1 source, date range ───────────────
@@ -56,6 +65,8 @@ async def generate_recap(source, date_from: date, date_to: date) -> str:
     dari date_from sampai date_to (inklusif).
     Return: filepath string.
     """
+    daily = await _collect_range(source, date_from, date_to)
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Recap"
@@ -63,7 +74,7 @@ async def generate_recap(source, date_from: date, date_to: date) -> str:
 
     current = date_from
     while current <= date_to:
-        opening, closing = await _collect_day(source, current)
+        opening, closing = daily.get(current, ({}, {}))
         users = sorted(set(opening) | set(closing))
         for u in users:
             ws.append([
@@ -87,21 +98,27 @@ async def generate_recap(source, date_from: date, date_to: date) -> str:
 async def run_all_recaps(client, date_from: date, date_to: date) -> list[tuple[str, str]]:
     """
     Return list of (filepath, source_name) untuk semua channel + thread.
+    Semua source diproses secara paralel.
     """
-    results: list[tuple[str, str]] = []
-
     all_ids = [(cid, "channel") for cid in CHANNEL_IDS] + \
               [(tid, "thread")  for tid in THREAD_IDS]
 
+    sources = []
     for source_id, kind in all_ids:
         source = client.get_channel(source_id)
         if source is None:
             print(f"{kind.capitalize()} {source_id} not found")
             continue
-        filepath = await generate_recap(source, date_from, date_to)
-        results.append((filepath, source.name))
+        sources.append(source)
 
-    return results
+    if not sources:
+        return []
+
+    filepaths = await asyncio.gather(
+        *[generate_recap(src, date_from, date_to) for src in sources]
+    )
+
+    return list(zip(filepaths, [s.name for s in sources]))
 
 
 # ── build all_channel.xlsx ────────────────────────────────
