@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RADSOFT — Discord Service</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <img src="LOGO MITRA.jpeg" alt="Logo Mitra" class="logo-mark"/>
+    <div class="logo-text">RAD<span>SOFT</span></div>
+    <div class="header-right">DISCORD SERVICE PANEL</div>
+  </header>
+
+  <!-- HOME -->
+  <div class="page active" id="page-home">
+    <div class="home-hero">
+      <div class="eyebrow fade-up">Discord Automation</div>
+      <h1 class="fade-up d1">Discord<br>Service</h1>
+      <p class="fade-up d2">Kelola dan monitor layanan otomasi Discord RADSOFT dari satu panel terpusat.</p>
+    </div>
+    <div class="service-section">
+      <div class="section-label fade-up d2">Layanan Aktif</div>
+      <div class="service-list">
+        <div class="service-card fade-up d3" onclick="goTo('page-recap')">
+          <span class="service-num">01</span>
+          <div class="service-info">
+            <div class="service-name">DAILY TASK RECAP</div>
+            <div class="service-desc">Rekap otomatis opening &amp; closing dari channel Discord</div>
+          </div>
+          <span class="service-arrow">→</span>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span>© RADSOFT 2026</span>
+      <span class="status-dot">SERVICE ONLINE</span>
+    </footer>
+  </div>
+
+  <!-- RECAP PAGE -->
+  <div class="page" id="page-recap">
+    <div class="inner-header">
+      <button class="back-btn" onclick="goTo('page-home')">← BACK</button>
+    </div>
+    <div class="recap-hero">
+      <div class="eyebrow">Service 01</div>
+      <h2>DAILY TASK RECAP</h2>
+      <p>Jalankan rekap manual — pilih tanggal atau rentang tanggal yang diinginkan.</p>
+    </div>
+
+    <div class="recap-body">
+      <div class="sched-strip fade-up">
+        <span>⏰</span>
+        <span>Rekap terjadwal otomatis setiap hari pukul <strong>21:00 WIB</strong> — dikirim ke destination channel.</span>
+      </div>
+
+      <div class="action-card fade-up d1">
+        <div class="action-title">Manual Trigger</div>
+        <div class="action-desc">Pilih mode rekap, tentukan tanggal, lalu tekan <strong style="color:var(--white)">RECAP NOW</strong>.</div>
+
+        <!-- Mode toggle -->
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="btn-mode-today" onclick="setMode('today')">HARI INI</button>
+          <button class="mode-btn" id="btn-mode-range" onclick="setMode('range')">CUSTOM RANGE</button>
+        </div>
+
+        <!-- Date inputs -->
+        <div class="date-range" id="date-range-inputs">
+          <div class="date-group">
+            <label>Date From</label>
+            <input type="date" id="input-from"/>
+          </div>
+          <div class="date-group">
+            <label>Date To</label>
+            <input type="date" id="input-to"/>
+          </div>
+        </div>
+
+        <button class="btn-recap" id="btn-recap" onclick="triggerRecap()">▶ RECAP NOW</button>
+      </div>
+
+      <div class="status-box">
+        <div class="status-label">Activity Log</div>
+        <div class="log-area" id="log-area">
+          <div class="log-line">
+            <span class="log-time">--:--:--</span>
+            <span class="log-msg inf">Menunggu perintah...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <span>© RADSOFT 2026</span>
+      <span class="status-dot">SERVICE ONLINE</span>
+    </footer>
+  </div>
+
+</div>
+<script src="script.js"></script>
+</body>
+</html>

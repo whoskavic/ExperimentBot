@@ -1,18 +1,98 @@
 # ExperimentBot
 
-run: 
+Discord bot untuk rekap otomatis opening & closing harian dari channel dan thread yang terdaftar.
 
-bot_token = TOKEN BOT from DISCORD
+---
 
-channel_ids = Channel id untuk rekap dari channel apa aja
+## Setup
 
-thread_ids = Thread id untuk rekap dari thread apa aja
+**1. Buat virtual environment**
+```bash
+python -m venv venv
+```
 
-destination_channel = id destinasi rekap report mau di send kemana
+**2. Activate virtual environment**
+```bash
+# Windows
+venv\Scripts\activate
 
-recap_hour = di jam berapa (format 24) laporan akan dikirim
+# Linux / Mac
+source venv/bin/activate
+```
 
-recap_minute = di menit berapa laporan akan dikirim (kombinasi jam dan menit)
+**3. Install dependencies**
+```bash
+pip install -r requirements.txt
+```
 
-file user.json itu untuk mapping Discord ID dengan nama karyawan dengan format:
-"DISCORD_ID": "NAMA"
+**4. Jalankan bot**
+```bash
+python bot.py
+```
+
+---
+
+## Konfigurasi
+
+### `appsettings.json`
+
+```json
+{
+    "bot_token": "TOKEN_BOT_DISCORD",
+    "channel_ids": [123456789012345678],
+    "thread_ids": [111122223333444455],
+    "destination_channel": 100200300400500600,
+    "recap_hour": 21,
+    "recap_minute": 0
+}
+```
+
+| Key | Keterangan |
+|---|---|
+| `bot_token` | Token bot dari Discord Developer Portal |
+| `channel_ids` | List ID channel yang akan direkap |
+| `thread_ids` | List ID thread yang akan direkap |
+| `destination_channel` | ID channel tujuan pengiriman hasil rekap otomatis |
+| `recap_hour` | Jam pengiriman rekap otomatis (format 24 jam) |
+| `recap_minute` | Menit pengiriman rekap otomatis |
+
+### `user.json`
+
+Mapping Discord ID ke nama karyawan. Digunakan agar hasil rekap menampilkan nama, bukan username Discord.
+
+```json
+{
+    "299502622593777665": "FIKRI AVISHENA",
+    "123456789012345678": "NAMA KARYAWAN"
+}
+```
+
+---
+
+## Fitur
+
+- Rekap otomatis terjadwal setiap hari sesuai `recap_hour` dan `recap_minute`
+- Command `!recap` di channel/thread terdaftar untuk rekap manual hari ini
+- UI panel di `http://localhost:8080` untuk trigger rekap manual dengan pilihan tanggal
+- Output file `.xlsx` per channel/thread + gabungan `all_channel`
+- File lokal otomatis dihapus setelah dikirim ke Discord
+
+---
+
+## Struktur Folder
+
+```
+ExperimentBot/
+├── bot.py
+├── config.py
+├── requirements.txt
+├── appsettings.json
+├── user.json
+├── services/
+│   ├── recap.py
+│   └── scheduler.py
+└── web/
+    ├── server.py
+    └── static/
+        └── index.html
+```
