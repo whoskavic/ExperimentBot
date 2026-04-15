@@ -23,8 +23,9 @@ def _end_of_day(d: date) -> datetime:
 
 # ── time boundaries ───────────────────────────────────────
 
-_OPEN_LATE  = dtime(10, 0, 0)   # opening dianggap telat jika > 10:00
-_CLOSE_LATE = dtime(20, 0, 0)   # closing dianggap telat jika > 20:00
+_OPEN_LATE   = dtime(10, 0, 0)   # opening dianggap telat jika > 10:00
+_CLOSE_START = dtime(10, 0, 0)   # closing hanya valid mulai jam 10:00
+_CLOSE_LATE  = dtime(20, 0, 0)   # closing dianggap telat jika > 20:00
 
 
 # ── single source, full date range (1 API call) ───────────
@@ -67,7 +68,7 @@ async def _collect_range(source, date_from: date, date_to: date) -> dict[date, D
             else:
                 entry["op"] = True
 
-        if "CLOSING" in header or "CLOSE" in header:
+        if ("CLOSING" in header or "CLOSE" in header) and t >= _CLOSE_START:
             if t > _CLOSE_LATE:
                 entry["cl_late"] = True
             else:
