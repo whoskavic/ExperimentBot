@@ -48,12 +48,25 @@ async def _collect_range(source, date_from: date, date_to: date) -> dict[date, D
         msg_date = msg_time.date()
         t        = msg_time.time()
 
+        if msg.author.bot:
+            continue
+
+        if str(msg.author.id) not in USER_MAP:
+            continue
+
         lines = msg.content.splitlines()
         if not lines:
             continue
 
         header = lines[0].strip().upper()
-        user   = resolve_name(msg.author)
+
+        is_open  = "OPENING" in header or "OPEN" in header
+        is_close = ("CLOSING" in header or "CLOSE" in header) and t >= _CLOSE_START
+
+        if not is_open and not is_close:
+            continue
+
+        user = resolve_name(msg.author)
 
         if msg_date not in daily:
             daily[msg_date] = {}
@@ -62,13 +75,13 @@ async def _collect_range(source, date_from: date, date_to: date) -> dict[date, D
 
         entry = daily[msg_date][user]
 
-        if "OPENING" in header or "OPEN" in header:
+        if is_open:
             if t > _OPEN_LATE:
                 entry["op_late"] = True
             else:
                 entry["op"] = True
 
-        if ("CLOSING" in header or "CLOSE" in header) and t >= _CLOSE_START:
+        if is_close:
             if t > _CLOSE_LATE:
                 entry["cl_late"] = True
             else:
