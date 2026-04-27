@@ -72,7 +72,6 @@ Mapping Discord ID ke nama karyawan. Digunakan agar hasil rekap menampilkan nama
 ## Fitur
 
 - Rekap otomatis terjadwal setiap hari sesuai `recap_hour` dan `recap_minute`
-- Command `!recap` di channel/thread terdaftar untuk rekap manual hari ini
 - UI panel di `http://localhost:8080` untuk trigger rekap manual dengan pilihan tanggal
 - Output file `.xlsx` per channel/thread + gabungan `all_channel`
 - File lokal otomatis dihapus setelah dikirim ke Discord
