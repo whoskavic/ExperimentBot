@@ -42,8 +42,8 @@ python bot.py
     "channel_ids": [123456789012345678],
     "thread_ids": [111122223333444455],
     "destination_channel": 100200300400500600,
-    "recap_hour": 21,
-    "recap_minute": 0
+    "recap_hour": 23,
+    "recap_minute": 59
 }
 ```
 
