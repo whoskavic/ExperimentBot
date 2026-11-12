@@ -1,7 +1,9 @@
+import sys
+
 import discord
 from threading import Thread
 
-from config import TOKEN
+from config import TOKEN, WEB_HOST, WEB_PORT
 from services.scheduler import schedule_recap
 from web.server import app, init_app
 
@@ -15,7 +17,7 @@ client = discord.Client(intents=intents)
 # ── Flask thread ──────────────────────────────────────────
 
 def run_web():
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host=WEB_HOST, port=WEB_PORT)
 
 def keep_alive():
     t = Thread(target=run_web, daemon=True)
@@ -31,6 +33,9 @@ async def on_ready():
 
 
 # ── Start ─────────────────────────────────────────────────
+
+if not TOKEN:
+    sys.exit("DISCORD_TOKEN belum diisi. Isi di .env (lihat .env.example).")
 
 init_app(client)   # inject discord client ke Flask
 keep_alive()
