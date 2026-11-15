@@ -21,6 +21,20 @@ def _load_json(name: str) -> dict:
         return json.load(f)
 
 
+def _env_positive_int(name: str) -> int | None:
+    """Kosong → None. Selain bilangan bulat > 0 → error yang jelas saat start."""
+    raw = (os.getenv(name) or "").strip()
+    if raw == "":
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        raise SystemExit(f"[config] {name} harus bilangan bulat > 0 (atau kosong), bukan {raw!r}")
+    if value <= 0:
+        raise SystemExit(f"[config] {name} harus bilangan bulat > 0 (atau kosong), bukan {raw!r}")
+    return value
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
@@ -47,6 +61,7 @@ WEB_HOST              = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT              = int(os.getenv("WEB_PORT", "8080"))
 SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", False)
 LOGIN_RATE_LIMIT      = os.getenv("LOGIN_RATE_LIMIT", "5 per minute")   # hanya percobaan gagal
+SESSION_LIFETIME_MINUTES = _env_positive_int("SESSION_LIFETIME_MINUTES")  # None = sampai browser ditutup
 
 # ── database ──────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///radsoftbot.db")

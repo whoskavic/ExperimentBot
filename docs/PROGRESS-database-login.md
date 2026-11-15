@@ -13,15 +13,15 @@ Terakhir diperbarui: 2026-11-15
 | 3 | Layer database: engine, model, migrasi awal Alembic | ✅ Selesai | `951815f` |
 | 4 | Service simpan/rewrite + log revisi + cek identik + test | ✅ Selesai | `d2a69f8` |
 | 5 | Integrasi ke alur rekap (scheduler & panel) | ✅ Selesai | `aec090e` |
-| 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ✅ Selesai | (belum di-commit) |
-| 7 | Halaman riwayat + export Excel dari DB | ⏳ Berikutnya | — |
-| 8 | CLI pemetaan source → tim | ⬜ Belum | — |
+| 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ✅ Selesai | `d51142c` |
+| 7 | Halaman riwayat + export Excel dari DB | ✅ Selesai | (belum di-commit) |
+| 8 | CLI pemetaan source → tim | ⏳ Berikutnya | — |
 | 9 | Skrip backup `scripts/backup_db.py` + cara restore | ⬜ Belum | — |
 | 10 | Update `bot.http` dan README | ⬜ Belum | — |
 
 PR: #6 (Langkah 1–4 sudah direview).
 
-Test saat ini: **96 passed** (`venv\Scripts\python -m pytest`).
+Test saat ini: **143 passed** (`venv\Scripts\python -m pytest`).
 
 ---
 
@@ -45,6 +45,9 @@ Test saat ini: **96 passed** (`venv\Scripts\python -m pytest`).
 16. Kolom `opening_at` / `closing_at` ditunda.
 17. **Perubahan `display_name` saja** (flag sama) tidak dihitung sebagai perubahan: nama diperbarui, status `unchanged` dengan `names_updated: N`, tanpa revisi. Snapshot revisi lama tetap menyimpan nama saat itu.
 18. **User yang dihapus dari `user.json`** lalu tanggal lamanya direkap ulang → entri orang itu hilang dari tanggal tersebut. Ini dihitung sebagai perubahan, jadi versi lama tersimpan di revisi.
+19. **Waktu di panel dan export** selalu WIB dengan label "WIB" (DB tetap UTC).
+20. **Rentang filter/export** maksimal 366 hari (inklusif). Tanpa tanggal → 30 hari terakhir. Satu tanggal saja → dianggap satu hari itu.
+21. **Session**: `session.clear()` sebelum `login_user()` (cegah session fixation). `SESSION_LIFETIME_MINUTES` kosong = sampai browser ditutup; diisi = session permanen, habis setelah N menit tanpa request.
 
 ### ERD
 
@@ -194,7 +197,7 @@ Contoh response `POST /recap`:
 }
 ```
 
-### Langkah 6 — Login admin (belum di-commit)
+### Langkah 6 — Login admin (`d51142c`)
 
 - Sebelum mulai: baris `all_ids` di `services/recap.py` yang tergabung di Langkah 5 dirapikan kembali menjadi dua baris.
 - `web/auth.py`:
@@ -220,16 +223,31 @@ Contoh response `POST /recap`:
 - Sudah dibuktikan: kalau CSRFProtect didaftarkan sebelum guard login, 2 test "tanpa login → 401" gagal. CLI sungguhan sudah dicoba dengan DB sementara.
 - Catatan Windows: prompt password CLI membaca langsung dari konsol, jadi tidak bisa diisi lewat pipe. Saat diketik manual berjalan normal.
 
+### Langkah 7 — Halaman riwayat + export (belum di-commit)
+
+Tambahan dari review Langkah 6:
+- `web/auth.py`: `session.clear()` sebelum `login_user()` (cegah session fixation; token CSRF lama ikut dibuang). Login gagal tidak menghapus session.
+- `SESSION_LIFETIME_MINUTES` (`config.py`, `.env.example`): kosong = sampai browser ditutup; diisi = session permanen dengan `PERMANENT_SESSION_LIFETIME` N menit (diperbarui setiap request, jadi habis setelah N menit tidak aktif). Nilai selain bilangan bulat > 0 → bot berhenti dengan pesan jelas.
+
+Riwayat + export:
+- `services/recap_query.py` (sisi baca):
+  - `parse_filter()` — `date_from`, `date_to`, `source_id`, `team` (`__none__` = tanpa tim). Default 30 hari terakhir, maksimal 366 hari, error → `FilterError` (400).
+  - `list_recaps()` — pagination (`page`, `per_page` default 25, maks 100), urut tanggal terbaru lalu nama source. Per baris: source + tim, jumlah entri, `revision_count`, `last_triggered_by`, `created_at`/`updated_at` (WIB).
+  - `get_recap_detail()` — data sekarang + setiap revisi (terbaru dulu): siapa/kapan mengganti, versi lama (`old_triggered_by`, `old_updated_at` dalam WIB, `old_entries`), dan `diff_vs_current` per user (`same` / `changed` / `added` / `removed`).
+  - `export_xlsx()` — dibuat di memori (BytesIO). Sheet **Recap**: kolom sama persis dengan Excel Discord (`date, source, user, opening, opening_late, closing, closing_late`), urut tanggal → source → nama → uid. Sheet **Info**: waktu export (WIB), filter, dan metadata tiap rekap (tim, jumlah entri, revisi, terakhir oleh, updated_at WIB). Nama file `recap_<tanggal>[_to_<tanggal>]_db.xlsx`.
+  - `to_wib()` — UTC naive → `YYYY-MM-DD HH:MM:SS WIB`.
+- `web/history.py` (blueprint `/api`, otomatis wajib login lewat guard): `GET /api/sources`, `GET /api/recaps`, `GET /api/recaps/<id>`, `GET /api/recaps/export`.
+- Panel: kartu **02 RIWAYAT REKAP** di home, halaman riwayat (filter tanggal/rentang/source/tim, tombol CARI dan EXPORT EXCEL, tabel + pagination, panel detail dengan tabel data sekarang dan diff per revisi). Semua isi dari server dimasukkan lewat `textContent` (bukan `innerHTML`). Tabel bisa di-scroll horizontal di layar kecil.
+- Test:
+  - `tests/test_history.py` (36): 401 tanpa login untuk semua route baru, konversi WIB (termasuk lewat tengah malam), filter default/satu tanggal/invalid/batas 366 hari, daftar + metadata WIB, filter tanggal/source/tim/tanpa tim, pagination, batas `per_page`, parameter salah → 400, daftar source + tim, detail + diff revisi, detail tanpa revisi, 404, export (mime, nama file, isi sheet Recap dan Info), export dengan filter / kosong / lewat batas, **sheet Recap identik dengan Excel Discord untuk data yang sama** (termasuk dua user dengan nama sama).
+  - `tests/test_auth.py` (+11): session fixation, login gagal tidak menghapus session, session default vs `SESSION_LIFETIME_MINUTES`, parsing env.
+- Sudah dibuktikan: tanpa `session.clear()` test session fixation gagal; kalau urutan baris export diubah, 2 test export gagal.
+
 ---
 
 ## Yang belum dikerjakan
 
-### Langkah 7 — Halaman riwayat + export (berikutnya)
-
-- Filter: tanggal, rentang, source, tim. Tampilkan jumlah revisi dan isi revisi.
-- Export Excel dari DB (dibuat di memori, tanpa file sementara), dengan kolom yang sama seperti Excel saat ini.
-
-### Langkah 8 — CLI pemetaan source → tim
+### Langkah 8 — CLI pemetaan source → tim (berikutnya)
 
 - Contoh: `set-team <discord_id> <tim>`, `list-sources`.
 - Source yang belum pernah direkap tetap bisa dipetakan: `kind` diambil dari config, nama sementara diperbarui saat rekap berikutnya.
@@ -258,6 +276,7 @@ Contoh response `POST /recap`:
 ## Aturan kerja
 
 - Satu langkah dikerjakan lalu berhenti. Lanjut hanya setelah "lanjut".
+- Setiap memulai langkah baru, isi dulu hash commit langkah sebelumnya di tabel status (cek dengan `git log`).
 - **Claude tidak menjalankan `git commit` / `git push`.** Commit dan push dilakukan manual; Claude hanya memberi saran pesan commit.
 - Isi `.env`, `appsettings.json`, dan `user.json` tidak pernah ditampilkan atau di-commit.
 - Data di test, dokumen, dan contoh selalu **fiktif** (ID dan nama karangan), tidak pernah diambil dari `user.json` atau `appsettings.json`.

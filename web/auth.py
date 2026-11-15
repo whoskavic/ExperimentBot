@@ -13,10 +13,11 @@ Login admin panel.
 """
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from urllib.parse import urlsplit
 
 import click
-from flask import Blueprint, Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, Flask, current_app, jsonify, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
@@ -24,7 +25,7 @@ from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 from sqlalchemy import select
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from config import LOGIN_RATE_LIMIT, SECRET_KEY, SESSION_COOKIE_SECURE
+from config import LOGIN_RATE_LIMIT, SECRET_KEY, SESSION_COOKIE_SECURE, SESSION_LIFETIME_MINUTES
 from db.base import session_scope, utcnow
 from db.models import AdminUser
 
@@ -155,6 +156,10 @@ def login():
         return render_template("login.html", next=nxt, username=username,
                                error="Username atau password salah."), 401
 
+    # Cegah session fixation: buang semua isi session lama (termasuk token
+    # CSRF lama) sebelum menandai user sebagai login.
+    session.clear()
+    session.permanent = current_app.config.get("RADSOFT_PERMANENT_SESSION", False)
     login_user(user)
     return redirect(_safe_next(nxt))
 
@@ -206,6 +211,12 @@ def init_auth(app: Flask) -> None:
         # Token CSRF berlaku selama session (panel bisa dibiarkan terbuka lama).
         WTF_CSRF_TIME_LIMIT=None,
     )
+    # SESSION_LIFETIME_MINUTES kosong → session cookie berakhir saat browser ditutup.
+    # Diisi → session permanen; habis setelah N menit tanpa request
+    # (Flask memperbarui cookie di setiap request).
+    if SESSION_LIFETIME_MINUTES:
+        app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=SESSION_LIFETIME_MINUTES)
+        app.config["RADSOFT_PERMANENT_SESSION"] = True
 
     # Urutan penting: guard login (blueprint) didaftarkan SEBELUM CSRFProtect,
     # supaya request tanpa login dapat 401, bukan 400 CSRF.

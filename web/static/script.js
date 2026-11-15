@@ -160,3 +160,189 @@ async function triggerRecap() {
   btn.disabled = false;
   btn.innerHTML = '▶ RECAP NOW';
 }
+// ════════════════════════════════════════════════════════
+// Riwayat rekap (data dari database)
+// Semua teks dari server dimasukkan lewat textContent (aman dari XSS).
+// ════════════════════════════════════════════════════════
+
+const FLAG_LABELS = [
+  ['opening', 'Opening'], ['opening_late', 'Opening telat'],
+  ['closing', 'Closing'], ['closing_late', 'Closing telat'],
+];
+const DIFF_LABELS = { same: 'sama', changed: 'berubah', added: 'baru', removed: 'dihapus' };
+
+const historyState = { page: 1, pages: 1, loadedSources: false };
+
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => {
+    if (k === 'class') node.className = v;
+    else if (k === 'onclick') node.addEventListener('click', v);
+    else node.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (c === null || c === undefined) return;
+    node.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c);
+  });
+  return node;
+}
+
+async function getJson(url) {
+  const res = await fetch(url, { credentials: 'same-origin' });
+  if (res.status === 401) {
+    goToLogin();
+    throw new Error('unauthorized');
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+
+function historyMessage(text, isError) {
+  const m = document.getElementById('h-message');
+  m.textContent = text || '';
+  m.classList.toggle('msg-error', !!isError);
+}
+
+function historyParams() {
+  const p = new URLSearchParams();
+  const add = (k, id) => { const v = document.getElementById(id).value; if (v) p.set(k, v); };
+  add('date_from', 'h-from');
+  add('date_to', 'h-to');
+  add('source_id', 'h-source');
+  add('team', 'h-team');
+  return p;
+}
+
+async function openHistory() {
+  goTo('page-history');
+  if (!historyState.loadedSources) {
+    const to = todayStr();
+    const from = new Date(Date.now() - 29 * 86400000).toLocaleDateString('sv-SE');
+    document.getElementById('h-from').value = from;
+    document.getElementById('h-to').value = to;
+    try {
+      const data = await getJson('/api/sources');
+      const srcSel = document.getElementById('h-source');
+      data.sources.forEach(s => srcSel.appendChild(
+        el('option', { value: s.id }, `${s.kind === 'thread' ? '🧵 ' : '#'}${s.name}`)));
+      const teamSel = document.getElementById('h-team');
+      data.teams.forEach(t => teamSel.appendChild(el('option', { value: t }, t)));
+      teamSel.appendChild(el('option', { value: '__none__' }, '(tanpa tim)'));
+      historyState.loadedSources = true;
+    } catch (err) {
+      if (err.message !== 'unauthorized') historyMessage(`Gagal memuat daftar source: ${err.message}`, true);
+    }
+  }
+  loadHistory(1);
+}
+
+async function loadHistory(page) {
+  if (page < 1) return;
+  const p = historyParams();
+  p.set('page', page);
+  historyMessage('Memuat...');
+  try {
+    const data = await getJson('/api/recaps?' + p.toString());
+    historyState.page = data.page;
+    historyState.pages = data.pages;
+    renderHistory(data);
+    historyMessage('');
+  } catch (err) {
+    if (err.message !== 'unauthorized') historyMessage(err.message, true);
+  }
+}
+
+function renderHistory(data) {
+  const tbody = document.querySelector('#h-table tbody');
+  tbody.replaceChildren();
+  if (!data.items.length) {
+    tbody.appendChild(el('tr', {}, el('td', { colspan: 8, class: 'empty' }, 'Tidak ada rekap untuk filter ini.')));
+  }
+  data.items.forEach(r => {
+    tbody.appendChild(el('tr', {},
+      el('td', {}, r.recap_date),
+      el('td', {}, r.source.name),
+      el('td', {}, r.source.team || '–'),
+      el('td', { class: 'num' }, r.entry_count),
+      el('td', { class: 'num' }, r.revision_count),
+      el('td', {}, r.last_triggered_by),
+      el('td', { class: 'mono' }, r.updated_at),
+      el('td', {}, el('button', { class: 'link-btn', onclick: () => openDetail(r.id) }, 'DETAIL')),
+    ));
+  });
+  const f = data.filter;
+  const range = f.date_from === f.date_to ? f.date_from : `${f.date_from} s/d ${f.date_to}`;
+  document.getElementById('h-summary').textContent = `Hasil — ${data.total} rekap (${range})`;
+  document.getElementById('h-page').textContent = `Halaman ${data.page} / ${data.pages}`;
+  document.getElementById('h-prev').disabled = data.page <= 1;
+  document.getElementById('h-next').disabled = data.page >= data.pages;
+}
+
+function exportHistory() {
+  // GET biasa dengan cookie session; file dibuat di server dari database.
+  window.location.href = '/api/recaps/export?' + historyParams().toString();
+}
+
+function flagCells(flags) {
+  return FLAG_LABELS.map(([k]) => el('td', { class: 'num' }, flags ? (flags[k] ? '✓' : '·') : '–'));
+}
+
+function entriesTable(entries) {
+  if (!entries.length) return el('p', { class: 'action-desc' }, 'Tidak ada entri (tanggal kosong).');
+  return el('div', { class: 'table-wrap' }, el('table', { class: 'data-table' },
+    el('thead', {}, el('tr', {}, el('th', {}, 'User'), FLAG_LABELS.map(([, l]) => el('th', {}, l)))),
+    el('tbody', {}, entries.map(e => el('tr', {}, el('td', {}, e.display_name), flagCells(e))))));
+}
+
+function diffTable(rows) {
+  if (!rows.length) return el('p', { class: 'action-desc' }, 'Keduanya kosong.');
+  return el('div', { class: 'table-wrap' }, el('table', { class: 'data-table diff' },
+    el('thead', {},
+      el('tr', {}, el('th', { rowspan: 2 }, 'User'), el('th', { rowspan: 2 }, 'Status'),
+        el('th', { colspan: 4 }, 'Versi lama'), el('th', { colspan: 4 }, 'Sekarang')),
+      el('tr', {}, FLAG_LABELS.map(([, l]) => el('th', {}, l)), FLAG_LABELS.map(([, l]) => el('th', {}, l)))),
+    el('tbody', {}, rows.map(r => el('tr', { class: 'diff-' + r.status },
+      el('td', {}, r.display_name), el('td', {}, DIFF_LABELS[r.status] || r.status),
+      flagCells(r.old), flagCells(r.new))))));
+}
+
+async function openDetail(id) {
+  const box = document.getElementById('h-detail');
+  const body = document.getElementById('h-detail-body');
+  box.hidden = false;
+  body.replaceChildren(el('p', { class: 'action-desc' }, 'Memuat...'));
+  try {
+    const d = await getJson('/api/recaps/' + id);
+    document.getElementById('h-detail-title').textContent = `Detail — ${d.recap_date} · ${d.source.name}`;
+    const parts = [
+      el('dl', { class: 'meta' },
+        el('dt', {}, 'Tim'), el('dd', {}, d.source.team || '–'),
+        el('dt', {}, 'Revisi'), el('dd', {}, d.revision_count),
+        el('dt', {}, 'Terakhir oleh'), el('dd', {}, d.last_triggered_by),
+        el('dt', {}, 'Dibuat'), el('dd', {}, d.created_at),
+        el('dt', {}, 'Diperbarui'), el('dd', {}, d.updated_at)),
+      el('div', { class: 'action-title' }, `Data sekarang (${d.entry_count} entri)`),
+      entriesTable(d.entries),
+    ];
+    if (!d.revisions.length) {
+      parts.push(el('p', { class: 'action-desc' }, 'Belum ada revisi — data ini belum pernah berubah.'));
+    }
+    d.revisions.forEach(v => {
+      parts.push(el('details', { class: 'revision' },
+        el('summary', {}, `Revisi #${v.revision_no} — diganti ${v.replaced_at} oleh ${v.replaced_by}`),
+        el('p', { class: 'action-desc' },
+          `Versi lama: terakhir oleh ${v.old_triggered_by || '–'}, diperbarui ${v.old_updated_at || '–'}. ` +
+          'Dibandingkan dengan data sekarang:'),
+        diffTable(v.diff_vs_current)));
+    });
+    body.replaceChildren(...parts);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    if (err.message !== 'unauthorized') body.replaceChildren(el('p', { class: 'action-desc msg-error' }, err.message));
+  }
+}
+
+function closeDetail() {
+  document.getElementById('h-detail').hidden = true;
+}

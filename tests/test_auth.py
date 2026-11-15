@@ -211,3 +211,64 @@ def test_create_admin_cli_password_mismatch(app):
                                        input="password-satu\npassword-dua\npassword-satu\npassword-satu\n")
     assert res.exit_code == 0
     assert authenticate("operator", "password-satu") is not None
+
+
+# ── session fixation & lifetime ───────────────────────────
+
+def test_login_clears_previous_session(client, admin):
+    with client.session_transaction() as sess:
+        sess["ditanam_penyerang"] = "x"
+        sess["_user_id"] = "999"               # mencoba "menanam" identitas lain
+    old_csrf = get_csrf(client)
+
+    res = client.post("/login", data={"username": ADMIN_USER, "password": ADMIN_PASS, "csrf_token": old_csrf})
+    assert res.status_code == 302
+
+    with client.session_transaction() as sess:
+        assert "ditanam_penyerang" not in sess
+        assert sess["_user_id"] != "999"
+        assert sess.get("csrf_token") is None   # token lama ikut dibuang
+    me = client.get("/api/me").get_json()
+    assert me["username"] == ADMIN_USER and me["csrf_token"] != old_csrf
+
+
+def test_failed_login_does_not_clear_session(client, admin):
+    with client.session_transaction() as sess:
+        sess["x"] = "tetap"
+    do_login(client, password="salah")
+    with client.session_transaction() as sess:
+        assert sess["x"] == "tetap"
+
+
+def _session_cookie(res):
+    return next(v for k, v in res.headers.items() if k == "Set-Cookie" and v.startswith("session="))
+
+
+def test_session_lifetime_default_browser_session(client, admin):
+    cookie = _session_cookie(do_login(client))
+    assert "Expires=" not in cookie and "Max-Age" not in cookie
+
+
+def test_session_lifetime_when_configured(app, client, admin, monkeypatch):
+    from datetime import timedelta
+    monkeypatch.setitem(app.config, "RADSOFT_PERMANENT_SESSION", True)
+    monkeypatch.setitem(app.config, "PERMANENT_SESSION_LIFETIME", timedelta(minutes=30))
+    cookie = _session_cookie(do_login(client))
+    assert "Expires=" in cookie
+    with client.session_transaction() as sess:
+        assert sess.permanent is True
+
+
+@pytest.mark.parametrize("raw, expected", [("", None), ("  ", None), ("30", 30)])
+def test_env_session_lifetime_parsing(monkeypatch, raw, expected):
+    import config
+    monkeypatch.setenv("SESSION_LIFETIME_MINUTES", raw)
+    assert config._env_positive_int("SESSION_LIFETIME_MINUTES") == expected
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "abc", "1.5"])
+def test_env_session_lifetime_invalid(monkeypatch, raw):
+    import config
+    monkeypatch.setenv("SESSION_LIFETIME_MINUTES", raw)
+    with pytest.raises(SystemExit, match="SESSION_LIFETIME_MINUTES"):
+        config._env_positive_int("SESSION_LIFETIME_MINUTES")
