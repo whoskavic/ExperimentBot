@@ -13,11 +13,13 @@ from io import BytesIO
 import openpyxl
 import pytz
 from sqlalchemy import func, select
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from config import TZ
 from db.base import session_scope
 from db.models import Recap, RecapEntry, RecapRevision, Source
 from services.recap_store import FLAGS, today_wib
+from services.source_admin import TEAMS, SourceAdminError, normalize_team
 
 MAX_RANGE_DAYS   = 366
 DEFAULT_DAYS     = 30
@@ -112,6 +114,11 @@ def parse_filter(args, today: date | None = None) -> RecapFilter:
         raise FilterError(f"Rentang tanggal maksimal {MAX_RANGE_DAYS} hari")
 
     team = (args.get("team") or "").strip() or None
+    if team and team != NO_TEAM:
+        try:
+            team = normalize_team(team)      # 'produk' → 'Produk'
+        except SourceAdminError:
+            pass                             # tim tidak dikenal → hasil kosong, bukan error
     return RecapFilter(d_from, d_to, parse_int("source_id", args.get("source_id")), team)
 
 
@@ -156,7 +163,9 @@ def _entry_dict(e) -> dict:
 def list_sources() -> dict:
     with session_scope() as s:
         sources = s.scalars(select(Source).order_by(Source.name, Source.id)).all()
-        teams = sorted({x.team for x in sources if x.team})
+        # Tim baku selalu tampil (dropdown panel), plus tim lain kalau ada di DB.
+        extra = sorted({x.team for x in sources if x.team and x.team not in TEAMS})
+        teams = list(TEAMS) + extra
         return {"sources": [_source_dict(x) for x in sources], "teams": teams}
 
 
@@ -176,7 +185,8 @@ def list_recaps(f: RecapFilter, page: int = 1, per_page: int = DEFAULT_PER_PAGE)
             _apply_filter(
                 select(Recap, func.coalesce(entry_count.c.n, 0))
                 .join(Source)
-                .outerjoin(entry_count, entry_count.c.recap_id == Recap.id), f)
+                .outerjoin(entry_count, entry_count.c.recap_id == Recap.id)
+                .options(contains_eager(Recap.source)), f)
             .order_by(Recap.recap_date.desc(), Source.name, Source.id)
             .offset((page - 1) * per_page).limit(per_page)
         ).all()
@@ -222,7 +232,9 @@ def _diff(old_entries: list[dict], new_entries: list[dict]) -> list[dict]:
 def get_recap_detail(recap_id: int) -> dict | None:
     """Rekap + entries sekarang + setiap revisi (snapshot lama vs data sekarang)."""
     with session_scope() as s:
-        r = s.get(Recap, recap_id)
+        r = s.get(Recap, recap_id, options=[
+            joinedload(Recap.source), selectinload(Recap.entries), selectinload(Recap.revisions),
+        ])
         if r is None:
             return None
         current = [_entry_dict(e) for e in sorted(r.entries, key=lambda e: (e.display_name, e.discord_user_id))]
@@ -252,6 +264,7 @@ def export_xlsx(f: RecapFilter) -> tuple[bytes, str]:
     with session_scope() as s:
         recaps = s.scalars(
             _apply_filter(select(Recap).join(Source), f)
+            .options(contains_eager(Recap.source), selectinload(Recap.entries))
             .order_by(Recap.recap_date, Source.name, Source.id)
         ).all()
 

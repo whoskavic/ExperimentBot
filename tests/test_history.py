@@ -177,7 +177,7 @@ def test_sources_and_teams(auth_client, seeded):
     body = auth_client.get("/api/sources").get_json()
     assert [(s["name"], s["kind"], s["team"]) for s in body["sources"]] == [
         ("opening-closing", "channel", "Produk"), ("thread dev", "thread", None)]
-    assert body["teams"] == ["Produk"]
+    assert body["teams"] == ["Produk", "Implementor", "Development"]
 
 
 # ── detail + revisi ───────────────────────────────────────
@@ -287,3 +287,54 @@ def test_export_columns_and_rows_match_discord_excel(db, tmp_path, monkeypatch):
 
     assert db_rows[0] == discord_rows[0] == XLSX_HEADER
     assert db_rows == discord_rows
+
+
+# ── jumlah query (tidak N+1) ──────────────────────────────
+
+class _QueryCounter:
+    def __init__(self, engine):
+        self.engine, self.n = engine, 0
+
+    def _count(self, *a, **kw):
+        self.n += 1
+
+    def __enter__(self):
+        from sqlalchemy import event
+        event.listen(self.engine, "before_cursor_execute", self._count)
+        return self
+
+    def __exit__(self, *exc):
+        from sqlalchemy import event
+        event.remove(self.engine, "before_cursor_execute", self._count)
+
+
+def _seed_many(n_days: int):
+    for i in range(n_days):
+        d = date(2026, 11, 1 + i)
+        extra = SourceInfo(800000000000001000 + i, "thread", f"thread {i:02d}")   # source berbeda tiap hari
+        for src in (SRC_A, SRC_B, extra):
+            save_recap_day(src, d, [e(U1, "ANDI", opening=True), e(U2, "SITI", closing=True)], "scheduler", TODAY)
+
+
+def _queries(db, fn):
+    with _QueryCounter(db) as c:
+        fn()
+    return c.n
+
+
+@pytest.mark.parametrize("fn_name", ["list", "export", "detail"])
+def test_query_count_does_not_grow_with_rows(db, fn_name):
+    from services.recap_query import get_recap_detail, list_recaps
+    f = RecapFilter(date(2026, 11, 1), date(2026, 11, 14))
+    fns = {
+        "list":   lambda: list_recaps(f, 1, 100),
+        "export": lambda: export_xlsx(f),
+        "detail": lambda: get_recap_detail(1),
+    }
+    _seed_many(1)
+    few = _queries(db, fns[fn_name])
+    _seed_many(12)          # tambah banyak rekap + revisi
+    for i in range(3):      # rekap id 1 dapat beberapa revisi
+        save_recap_day(SRC_A, date(2026, 11, 1), [e(U1, "ANDI", opening=bool(i % 2))], f"run{i}", TODAY)
+    many = _queries(db, fns[fn_name])
+    assert many == few, f"{fn_name}: {few} query → {many} query"

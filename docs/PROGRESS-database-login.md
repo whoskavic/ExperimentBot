@@ -14,14 +14,14 @@ Terakhir diperbarui: 2026-11-15
 | 4 | Service simpan/rewrite + log revisi + cek identik + test | ✅ Selesai | `d2a69f8` |
 | 5 | Integrasi ke alur rekap (scheduler & panel) | ✅ Selesai | `aec090e` |
 | 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ✅ Selesai | `d51142c` |
-| 7 | Halaman riwayat + export Excel dari DB | ✅ Selesai | (belum di-commit) |
-| 8 | CLI pemetaan source → tim | ⏳ Berikutnya | — |
-| 9 | Skrip backup `scripts/backup_db.py` + cara restore | ⬜ Belum | — |
+| 7 | Halaman riwayat + export Excel dari DB | ✅ Selesai | `b117ab0` |
+| 8 | CLI pemetaan source → tim | ✅ Selesai | (belum di-commit) |
+| 9 | Skrip backup `scripts/backup_db.py` + cara restore | ⏳ Berikutnya | — |
 | 10 | Update `bot.http` dan README | ⬜ Belum | — |
 
 PR: #6 (Langkah 1–4 sudah direview).
 
-Test saat ini: **143 passed** (`venv\Scripts\python -m pytest`).
+Test saat ini: **179 passed** (`venv\Scripts\python -m pytest`).
 
 ---
 
@@ -48,6 +48,7 @@ Test saat ini: **143 passed** (`venv\Scripts\python -m pytest`).
 19. **Waktu di panel dan export** selalu WIB dengan label "WIB" (DB tetap UTC).
 20. **Rentang filter/export** maksimal 366 hari (inklusif). Tanpa tanggal → 30 hari terakhir. Satu tanggal saja → dianggap satu hari itu.
 21. **Session**: `session.clear()` sebelum `login_user()` (cegah session fixation). `SESSION_LIFETIME_MINUTES` kosong = sampai browser ditutup; diisi = session permanen, habis setelah N menit tanpa request.
+22. **Tim** dibatasi ke `Produk` / `Implementor` / `Development` (case-insensitive, disimpan dengan kapitalisasi baku). `set-team` hanya untuk ID di `channel_ids` / `thread_ids`. Dropdown tim di panel selalu menampilkan ketiga tim.
 
 ### ERD
 
@@ -223,7 +224,7 @@ Contoh response `POST /recap`:
 - Sudah dibuktikan: kalau CSRFProtect didaftarkan sebelum guard login, 2 test "tanpa login → 401" gagal. CLI sungguhan sudah dicoba dengan DB sementara.
 - Catatan Windows: prompt password CLI membaca langsung dari konsol, jadi tidak bisa diisi lewat pipe. Saat diketik manual berjalan normal.
 
-### Langkah 7 — Halaman riwayat + export (belum di-commit)
+### Langkah 7 — Halaman riwayat + export (`b117ab0`)
 
 Tambahan dari review Langkah 6:
 - `web/auth.py`: `session.clear()` sebelum `login_user()` (cegah session fixation; token CSRF lama ikut dibuang). Login gagal tidak menghapus session.
@@ -243,16 +244,30 @@ Riwayat + export:
   - `tests/test_auth.py` (+11): session fixation, login gagal tidak menghapus session, session default vs `SESSION_LIFETIME_MINUTES`, parsing env.
 - Sudah dibuktikan: tanpa `session.clear()` test session fixation gagal; kalau urutan baris export diubah, 2 test export gagal.
 
+### Langkah 8 — CLI pemetaan source → tim (belum di-commit)
+
+Tambahan dari review Langkah 7 (N+1 query):
+- `services/recap_query.py`: `list_recaps` dan `export_xlsx` memakai `contains_eager(Recap.source)` (source sudah di-JOIN), `export_xlsx` + `selectinload(Recap.entries)`, `get_recap_detail` memakai `joinedload(source)` + `selectinload(entries, revisions)`.
+- Test `test_query_count_does_not_grow_with_rows` (list / export / detail): jumlah query harus sama untuk sedikit vs banyak rekap. Sebelum diperbaiki: export 6 → 28 query; tanpa eager loading (setelah test diperketat dengan source berbeda tiap hari): list 6 → 17, export 8 → 52.
+
+Pemetaan tim:
+- `services/source_admin.py`:
+  - `TEAMS = ("Produk", "Implementor", "Development")`, `normalize_team()` (case-insensitive → kapitalisasi baku, nilai lain ditolak dengan daftar pilihan).
+  - `set_team(discord_id, team)` — hanya ID di `channel_ids` / `thread_ids`. Source yang belum pernah direkap dibuat dengan `kind` dari config dan nama sementara `(belum direkap)`; nama asli otomatis diisi saat rekap berikutnya (upsert di `recap_store`), tim tetap.
+  - `clear_team(discord_id)` — untuk source apa pun di DB (termasuk yang sudah dihapus dari config). ID di config yang belum pernah direkap → "memang belum punya tim" tanpa membuat baris baru. ID tidak dikenal → error.
+  - `list_sources()` — gabungan config + DB dengan status `ok` / `belum direkap` / `tidak ada di config`.
+- `web/cli.py` (didaftarkan di `web/server.py`):
+  - `flask --app web.server list-sources` — tabel `DISCORD_ID  KIND  NAME  TEAM  STATUS`.
+  - `flask --app web.server set-team <discord_id> <tim>`
+  - `flask --app web.server clear-team <discord_id>`
+- `services/recap_query.py`: filter `team` case-insensitive (`produk` = `Produk`); `/api/sources` selalu mengembalikan ketiga tim baku (plus tim lain kalau ada di DB).
+- Test `tests/test_source_admin.py` (33): normalisasi tim (valid/invalid), set-team untuk source yang sudah ada / channel & thread yang belum direkap (kind dari config), nama sementara diganti saat rekap berikutnya dengan tim tetap, ID di luar config ditolak (termasuk source lama di DB), tim invalid tidak mengubah apa pun, clear-team (biasa / source lama / belum direkap / ID tidak dikenal), list-sources, CLI (output, error tim/ID/argumen), filter tim riwayat dan export langsung bekerja setelah pemetaan.
+
 ---
 
 ## Yang belum dikerjakan
 
-### Langkah 8 — CLI pemetaan source → tim (berikutnya)
-
-- Contoh: `set-team <discord_id> <tim>`, `list-sources`.
-- Source yang belum pernah direkap tetap bisa dipetakan: `kind` diambil dari config, nama sementara diperbarui saat rekap berikutnya.
-
-### Langkah 9 — Backup
+### Langkah 9 — Backup (berikutnya)
 
 - `scripts/backup_db.py` memakai backup API SQLite (aman saat DB sedang dipakai).
 - Nama file bertimestamp di `backups/`, hapus file yang lebih dari 14 hari.
@@ -270,7 +285,7 @@ Riwayat + export:
 - [ ] **Reset token bot** di Discord Developer Portal, lalu simpan token baru hanya di `.env` dan hapus `bot_token` dari `appsettings.json`.
 - [ ] **Buat `.env`** dari `.env.example` dan isi `SECRET_KEY` (`python -c "import secrets; print(secrets.token_hex(32))"`).
 - [ ] **Data asli di riwayat git**: commit `d2a69f8` (sudah di PR #6) berisi 2 Discord ID + nama karyawan asli di `tests/test_recap_store.py`. Sudah diganti di working tree, tapi masih ada di riwayat branch. Putuskan: rewrite riwayat branch sebelum merge, atau terima. `README.md` di `master` juga berisi 1 pasangan ID + nama asli (akan diganti di Langkah 10).
-- [ ] **Pemetaan tim** (Produk / Implementor / Development) belum ada. CLI-nya tetap dibuat di Langkah 8.
+- [ ] **Pemetaan tim** (Produk / Implementor / Development): CLI sudah tersedia (Langkah 8). Tinggal jalankan `list-sources` lalu `set-team` untuk setiap channel/thread.
 - [ ] Buka PR ke `master` setelah semua langkah selesai (atau Draft PR lebih dulu). Jangan merge tanpa review.
 
 ## Aturan kerja

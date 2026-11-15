@@ -9,6 +9,7 @@ from flask_login import current_user
 from config import TZ, DESTINATION_CHANNEL
 from services.recap import run_all_recaps, send_recaps
 from web.auth import init_auth
+from web.cli import register_cli
 from web.history import bp as history_bp
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -18,6 +19,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = Flask(__name__, static_folder=None, template_folder="templates")
 init_auth(app)
 app.register_blueprint(history_bp)   # /api/sources, /api/recaps..., wajib login
+register_cli(app)                    # list-sources, set-team, clear-team
 
 # injected from bot.py at startup
 _discord_client = None
