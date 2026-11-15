@@ -51,19 +51,28 @@ def trigger_recap():
     )
 
     try:
-        files = future.result(timeout=120)
-        return jsonify({"status": "ok", "date_from": str(date_from), "date_to": str(date_to), "files": files})
+        out = future.result(timeout=120)
+        return jsonify({"status": "ok", "date_from": str(date_from), "date_to": str(date_to),
+                        "files": out["files"], "saved": out["saved"]})
     except Exception as e:
         traceback.print_exc()
         msg = str(e) or type(e).__name__
         return jsonify({"status": "error", "message": msg}), 500
 
 
-async def _do_recap(date_from: date, date_to: date) -> list[str]:
-    dest    = _discord_client.get_channel(DESTINATION_CHANNEL)
-    results = await run_all_recaps(_discord_client, date_from, date_to)
+async def _do_recap(date_from: date, date_to: date) -> dict:
+    """
+    Return: {"files": [nama file terkirim], "saved": save_report per source}
+    save_report: [{source_id, source, kind, dates: [{recap_date, status, ...}]}]
+    status: created | updated | unchanged | skipped | error
+    """
+    dest = _discord_client.get_channel(DESTINATION_CHANNEL)
+    # TODO Langkah 6: "panel:<username>" setelah ada login
+    results, save_report = await run_all_recaps(_discord_client, date_from, date_to,
+                                                triggered_by="panel")
 
     if not results:
-        return []
+        return {"files": [], "saved": save_report}
 
-    return await send_recaps(dest, results, date_from, date_to)
+    files = await send_recaps(dest, results, date_from, date_to)
+    return {"files": files, "saved": save_report}

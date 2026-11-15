@@ -31,6 +31,13 @@ def next_recap_target(now: datetime, hour: int, minute: int,
     return target
 
 
+def _print_save_report(save_report: list[dict]) -> None:
+    for src in save_report:
+        for d in src["dates"]:
+            extra = f" ({d['error']})" if d.get("error") else ""
+            print(f"DB recap #{src['source']} {d['recap_date']}: {d['status']}{extra}")
+
+
 async def schedule_recap(client):
     await client.wait_until_ready()
 
@@ -55,7 +62,9 @@ async def schedule_recap(client):
             print("Destination channel not found")
             continue
 
-        results = await run_all_recaps(client, recap_date, recap_date)
+        results, save_report = await run_all_recaps(client, recap_date, recap_date,
+                                                    triggered_by="scheduler")
+        _print_save_report(save_report)
 
         if not results:
             await dest.send("Tidak ada data recap hari ini.")

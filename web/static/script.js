@@ -36,12 +36,35 @@ function setMode(mode) {
 window.addEventListener('DOMContentLoaded', () => setMode('today'));
 
 // ── Log ──
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// status simpan DB → tipe log
+const SAVE_LOG_TYPE = { created: 'ok', updated: 'ok', unchanged: 'inf', skipped: 'inf', error: 'err' };
+
+function logSaveReport(saved) {
+  if (!saved || !saved.length) return;
+  addLog('Hasil simpan ke database:', 'inf');
+  saved.forEach(src => {
+    (src.dates || []).forEach(d => {
+      let extra = '';
+      if (d.status === 'updated')   extra = ` (revisi #${d.revision_no})`;
+      if (d.names_updated)          extra += ` (${d.names_updated} nama diperbarui)`;
+      if (d.status === 'error')     extra = ` — ${d.error}`;
+      addLog(`  #${src.source} ${d.recap_date}: ${d.status}${extra}`, SAVE_LOG_TYPE[d.status] || 'inf');
+    });
+  });
+}
+
 function addLog(msg, type = 'inf') {
   const area = document.getElementById('log-area');
   const now  = new Date().toLocaleTimeString('id-ID', { hour12: false });
   const line = document.createElement('div');
   line.className = 'log-line';
-  line.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
+  line.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${escapeHtml(msg)}</span>`;
   area.appendChild(line);
   area.scrollTop = area.scrollHeight;
 }
@@ -79,6 +102,7 @@ async function triggerRecap() {
       addLog('Recap berhasil dijalankan.', 'ok');
       (data.files || []).forEach(f => addLog(`  ✓ ${f}`, 'ok'));
       addLog('File dikirim ke destination channel Discord.', 'ok');
+      logSaveReport(data.saved);
     } else {
       addLog(`Gagal: ${data.message || 'Unknown error'}`, 'err');
     }

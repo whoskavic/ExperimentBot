@@ -86,9 +86,10 @@ def test_loop_recaps_target_date_even_if_woke_after_midnight(monkeypatch, late_b
     async def fake_sleep(seconds):
         clock["now"] = clock["now"] + timedelta(seconds=seconds) + late_by
 
-    async def fake_run_all_recaps(client, date_from, date_to):
+    async def fake_run_all_recaps(client, date_from, date_to, triggered_by="panel"):
+        assert triggered_by == "scheduler"
         recapped.append((date_from, date_to, clock["now"]))
-        return []
+        return [], []
 
     monkeypatch.setattr(sched, "_now", lambda: clock["now"])
     monkeypatch.setattr(sched.asyncio, "sleep", fake_sleep)

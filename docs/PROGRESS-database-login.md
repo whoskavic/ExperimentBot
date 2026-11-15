@@ -11,15 +11,17 @@ Terakhir diperbarui: 2026-11-15
 | 1 | Config & secrets (`.env`, file example, `.gitignore`) | ✅ Selesai | `2f8c694` |
 | 2 | Perbaikan bug tengah malam di scheduler + test | ✅ Selesai | `06fa085` |
 | 3 | Layer database: engine, model, migrasi awal Alembic | ✅ Selesai | `951815f` |
-| 4 | Service simpan/rewrite + log revisi + cek identik + test | ✅ Selesai | (belum di-commit) |
-| 5 | Integrasi ke alur rekap (scheduler & panel) | ⏳ Berikutnya | — |
-| 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ⬜ Belum | — |
+| 4 | Service simpan/rewrite + log revisi + cek identik + test | ✅ Selesai | `d2a69f8` |
+| 5 | Integrasi ke alur rekap (scheduler & panel) | ✅ Selesai | (belum di-commit) |
+| 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ⏳ Berikutnya | — |
 | 7 | Halaman riwayat + export Excel dari DB | ⬜ Belum | — |
 | 8 | CLI pemetaan source → tim | ⬜ Belum | — |
 | 9 | Skrip backup `scripts/backup_db.py` + cara restore | ⬜ Belum | — |
 | 10 | Update `bot.http` dan README | ⬜ Belum | — |
 
-Test saat ini: **37 passed** (`venv\Scripts\python -m pytest`).
+PR: #6 (Langkah 1–4 sudah direview).
+
+Test saat ini: **52 passed** (`venv\Scripts\python -m pytest`).
 
 ---
 
@@ -33,7 +35,7 @@ Test saat ini: **37 passed** (`venv\Scripts\python -m pytest`).
 6. **Tanggal setelah hari ini (WIB)** tidak disimpan ke DB (status `skipped`), tapi Excel tetap dikirim.
 7. **Kalau DB gagal**: error di-log, status `error` per tanggal, dan Excel tetap dikirim ke Discord.
 8. **Rentang tanggal**: disimpan per tanggal, masing-masing dalam transaksinya sendiri.
-9. **`_collect_range`** hanya ditambah field `"uid"` (Discord ID). Filter, flag, dan output Excel tidak berubah.
+9. **`_collect_range`** memakai Discord user id (`uid`) sebagai kunci dict per hari, dengan nama hasil `resolve_name` di field `"name"`. Dua user dengan nama sama tidak lagi tergabung. Filter, flag, dan isi/format Excel tidak berubah (dibuktikan dengan test pembanding terhadap kode lama). *(Diubah dari rencana awal "hanya tambah field uid".)*
 10. **`generate_recap`** dipecah menjadi `_collect_range` + `_write_xlsx`. `run_all_recaps` mengembalikan `(results, save_report)`.
 11. **Excel ke Discord** tetap dari data live. Export dari DB hanya untuk halaman riwayat.
 12. **Panel** hanya di localhost (`WEB_HOST=127.0.0.1`), tanpa nginx/domain/HTTPS. Static dipindah ke `/static/` supaya semua halaman wajib login.
@@ -134,7 +136,7 @@ erDiagram
 - Test (`tests/test_db.py`, 9 kasus): skema migrasi sama dengan model, pragma aktif, path relatif, UNIQUE, foreign key, `ON DELETE CASCADE`, JSON roundtrip, `BEGIN IMMEDIATE`.
 - Sudah dicek juga: `upgrade` → `downgrade` → `upgrade` berjalan bersih, `alembic check` tanpa perbedaan, dan SQL PostgreSQL menghasilkan `BOOLEAN DEFAULT true` + `JSONB`.
 
-### Langkah 4 — Service simpan/rewrite (belum di-commit)
+### Langkah 4 — Service simpan/rewrite (`d2a69f8`)
 
 - `services/recap_store.py` (sinkron; di Langkah 5 dipanggil lewat `asyncio.to_thread`):
   - `save_recap_day(source, recap_date, entries, triggered_by, today)` — satu transaksi `BEGIN IMMEDIATE`:
@@ -151,17 +153,52 @@ erDiagram
 - Test (`tests/test_recap_store.py`, 17 kasus): simpan pertama, rewrite + snapshot, revisi berulang, rekap identik (urutan beda), perubahan nama saja, nama source berubah, tanggal kosong, mengosongkan data lama, tanggal masa depan, hari ini, rentang tanggal (termasuk kosong & masa depan), rentang campuran, error satu tanggal, `uid` wajib, `uid` duplikat, dua penyimpanan bersamaan.
 - Sudah dibuktikan: tanpa `BEGIN IMMEDIATE`, test dua penyimpanan bersamaan gagal 4 dari 6 kali; dengan `BEGIN IMMEDIATE` selalu lolos.
 
+### Langkah 5 — Integrasi ke alur rekap (belum di-commit)
+
+- `services/recap.py`:
+  - `_collect_range` → `{date: {uid: {"name", "op", "cl", "op_late", "cl_late"}}}`. Logika filter dan flag tidak berubah.
+  - `_write_xlsx(source_name, daily, date_from, date_to)` — urut per nama (lalu uid kalau nama sama). Format, kolom, nama file, dan nama sheet sama seperti sebelumnya.
+  - `generate_recap()` tetap ada (kumpulkan + tulis xlsx, tanpa DB).
+  - `run_all_recaps(client, date_from, date_to, triggered_by="panel")` → `(results, save_report)`. Per source: kumpulkan → simpan ke DB lewat `asyncio.to_thread(save_recap_range, ...)` → tulis xlsx. Semua source tetap paralel.
+  - Kalau DB gagal: `log.exception`, status `error` untuk setiap tanggal source itu, dan Excel tetap dibuat dan dikirim.
+- `services/recap_store.py`: `entries_from_day_data` mengikuti struktur baru (kunci uid, `name` wajib).
+- `services/scheduler.py`: `triggered_by="scheduler"`, ringkasan hasil simpan dicetak ke log.
+- `web/server.py`: response `POST /recap` sekarang berisi `"saved"` (lihat contoh di bawah). `triggered_by` sementara `"panel"`, menjadi `"panel:<username>"` di Langkah 6.
+- `web/static/script.js`: hasil simpan per tanggal ditampilkan di log panel. `addLog` sekarang meng-escape HTML (nama thread Discord bisa berisi karakter apa saja).
+- Data asli (2 Discord ID + nama karyawan) di `tests/test_recap_store.py` diganti dengan data fiktif.
+- Test baru:
+  - `tests/test_recap_flow.py` (10): kunci uid + field name, dua uid dengan nama sama (dua entry dan dua baris Excel), **Excel identik dengan kode lama** (salinan persis kode `d2a69f8`, dibandingkan sel per sel untuk 1 hari, rentang, tanpa data, dan file all_channel), `run_all_recaps` menyimpan ke DB, rekap ulang → `unchanged`, DB gagal → Excel tetap ada, tanpa source, simpan DB jalan di thread lain (bukan event loop).
+  - `tests/test_server_recap.py` (3): response berisi `saved`, tanpa source, validasi tanggal tetap sama.
+  - `tests/test_recap_store.py` (+2): `name` wajib, dua uid dengan nama sama disimpan sebagai dua entry.
+- Sudah dibuktikan: kalau urutan baris di `_write_xlsx` diubah, 3 test pembanding Excel gagal.
+
+Contoh response `POST /recap`:
+
+```json
+{
+  "status": "ok",
+  "date_from": "2026-11-12",
+  "date_to": "2026-11-12",
+  "files": ["recap_2026-11-12_channel_a.xlsx", "recap_2026-11-12_all_channel.xlsx"],
+  "saved": [
+    {
+      "source_id": "800000000000000001",
+      "source": "channel a",
+      "kind": "channel",
+      "dates": [
+        {"recap_date": "2026-11-12", "status": "updated", "recap_id": 3,
+         "revision_no": 1, "names_updated": 0, "error": null}
+      ]
+    }
+  ]
+}
+```
+
 ---
 
 ## Yang belum dikerjakan
 
-### Langkah 5 — Integrasi ke alur rekap (berikutnya)
-
-- `services/recap.py`: tambah `"uid"` di `_collect_range`, pecah `generate_recap` menjadi `_collect_range` + `_write_xlsx`, `run_all_recaps` menyimpan ke DB lalu mengembalikan `(results, save_report)`.
-- `services/scheduler.py`: `triggered_by="scheduler"`.
-- `web/server.py`: `POST /recap` menyertakan hasil simpan per tanggal di response.
-
-### Langkah 6 — Login admin
+### Langkah 6 — Login admin (berikutnya)
 
 - Flask-Login, hash password dengan `werkzeug.security`.
 - CLI `create-admin` (tidak ada halaman register).
@@ -200,6 +237,7 @@ erDiagram
 
 - [ ] **Reset token bot** di Discord Developer Portal, lalu simpan token baru hanya di `.env` dan hapus `bot_token` dari `appsettings.json`.
 - [ ] **Buat `.env`** dari `.env.example` dan isi `SECRET_KEY` (`python -c "import secrets; print(secrets.token_hex(32))"`).
+- [ ] **Data asli di riwayat git**: commit `d2a69f8` (sudah di PR #6) berisi 2 Discord ID + nama karyawan asli di `tests/test_recap_store.py`. Sudah diganti di working tree, tapi masih ada di riwayat branch. Putuskan: rewrite riwayat branch sebelum merge, atau terima. `README.md` di `master` juga berisi 1 pasangan ID + nama asli (akan diganti di Langkah 10).
 - [ ] **Pemetaan tim** (Produk / Implementor / Development) belum ada. CLI-nya tetap dibuat di Langkah 8.
 - [ ] Buka PR ke `master` setelah semua langkah selesai (atau Draft PR lebih dulu). Jangan merge tanpa review.
 
@@ -208,6 +246,7 @@ erDiagram
 - Satu langkah dikerjakan lalu berhenti. Lanjut hanya setelah "lanjut".
 - **Claude tidak menjalankan `git commit` / `git push`.** Commit dan push dilakukan manual; Claude hanya memberi saran pesan commit.
 - Isi `.env`, `appsettings.json`, dan `user.json` tidak pernah ditampilkan atau di-commit.
+- Data di test, dokumen, dan contoh selalu **fiktif** (ID dan nama karangan), tidak pernah diambil dari `user.json` atau `appsettings.json`.
 
 ## Perintah berguna
 

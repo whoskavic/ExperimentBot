@@ -79,16 +79,17 @@ def today_wib() -> date:
 def entries_from_day_data(day_data: dict) -> list[EntryIn]:
     """
     Konversi 1 hari hasil `_collect_range`:
-        {NAMA: {"uid": int, "op": bool, "op_late": bool, "cl": bool, "cl_late": bool}}
-    → list[EntryIn].
+        {uid: {"name": str, "op": bool, "op_late": bool, "cl": bool, "cl_late": bool}}
+    → list[EntryIn]. Kunci = Discord user id, jadi dua user dengan nama
+    sama tetap menjadi dua entry.
     """
     out: list[EntryIn] = []
-    for name, e in day_data.items():
-        if "uid" not in e:
-            raise ValueError(f"entry {name!r} tidak punya 'uid'")
+    for uid, e in day_data.items():
+        if not e.get("name"):
+            raise ValueError(f"entry uid={uid} tidak punya 'name'")
         out.append(EntryIn(
-            discord_user_id=int(e["uid"]),
-            display_name=name,
+            discord_user_id=int(uid),
+            display_name=e["name"],
             opening=bool(e.get("op")),
             opening_late=bool(e.get("op_late")),
             closing=bool(e.get("cl")),

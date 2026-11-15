@@ -12,11 +12,11 @@ from services.recap_store import (
     CREATED, UPDATED, UNCHANGED, SKIPPED, ERROR,
 )
 
-SRC   = SourceInfo(discord_id=1493500756000000001, kind="channel", name="opening-closing")
+SRC   = SourceInfo(discord_id=800000000000000001, kind="channel", name="opening-closing")
 D     = date(2026, 11, 12)
 TODAY = date(2026, 11, 14)
-UID_A = 299502622593777665     # > 2^53, ID Discord realistis
-UID_B = 1116155926009880597
+UID_A = 900000000000000001     # > 2^53 seperti ID Discord (fiktif)
+UID_B = 900000000000000002
 
 
 def entry(uid, name, **flags):
@@ -45,16 +45,16 @@ def count(model):
 # ── simpan pertama ────────────────────────────────────────
 
 def test_first_save_creates_recap(db):
-    res = save_recap_day(SRC, D, [entry(UID_A, "FIKRI", opening=True, closing=True),
-                                  entry(UID_B, "FAHRIZAL", opening_late=True)], "scheduler", TODAY)
+    res = save_recap_day(SRC, D, [entry(UID_A, "ANDI", opening=True, closing=True),
+                                  entry(UID_B, "SITI", opening_late=True)], "scheduler", TODAY)
     assert res.status == CREATED and res.recap_id
 
     got = load()
     assert got["revision_count"] == 0
     assert got["last_triggered_by"] == "scheduler"
     assert got["entries"] == {
-        UID_A: ("FIKRI", True, False, True, False),
-        UID_B: ("FAHRIZAL", False, True, False, False),
+        UID_A: ("ANDI", True, False, True, False),
+        UID_B: ("SITI", False, True, False, False),
     }
     assert got["revisions"] == []
     with session_scope() as s:
@@ -65,9 +65,9 @@ def test_first_save_creates_recap(db):
 # ── rewrite tanggal yang sama ─────────────────────────────
 
 def test_rewrite_same_date_replaces_and_logs_revision(db):
-    save_recap_day(SRC, D, [entry(UID_A, "FIKRI", opening=True)], "scheduler", TODAY)
-    res = save_recap_day(SRC, D, [entry(UID_A, "FIKRI", opening=True, closing=True),
-                                  entry(UID_B, "FAHRIZAL", closing_late=True)], "panel:admin", TODAY)
+    save_recap_day(SRC, D, [entry(UID_A, "ANDI", opening=True)], "scheduler", TODAY)
+    res = save_recap_day(SRC, D, [entry(UID_A, "ANDI", opening=True, closing=True),
+                                  entry(UID_B, "SITI", closing_late=True)], "panel:admin", TODAY)
     assert res.status == UPDATED and res.revision_no == 1
 
     got = load()
@@ -75,22 +75,22 @@ def test_rewrite_same_date_replaces_and_logs_revision(db):
     assert got["revision_count"] == 1
     assert got["last_triggered_by"] == "panel:admin"
     assert got["entries"] == {
-        UID_A: ("FIKRI", True, False, True, False),
-        UID_B: ("FAHRIZAL", False, False, False, True),
+        UID_A: ("ANDI", True, False, True, False),
+        UID_B: ("SITI", False, False, False, True),
     }
 
     [(no, by, snap)] = got["revisions"]
     assert (no, by) == (1, "panel:admin")
     assert snap["triggered_by"] == "scheduler"     # versi lama
     assert snap["revision_count"] == 0
-    assert snap["entries"] == [{"discord_user_id": str(UID_A), "display_name": "FIKRI",
+    assert snap["entries"] == [{"discord_user_id": str(UID_A), "display_name": "ANDI",
                                 "opening": True, "opening_late": False,
                                 "closing": False, "closing_late": False}]
 
 
 def test_multiple_rewrites_increment_revision_no(db):
     for i, flags in enumerate([dict(opening=True), dict(closing=True), dict(opening_late=True)]):
-        save_recap_day(SRC, D, [entry(UID_A, "FIKRI", **flags)], f"run{i}", TODAY)
+        save_recap_day(SRC, D, [entry(UID_A, "ANDI", **flags)], f"run{i}", TODAY)
     got = load()
     assert got["revision_count"] == 2
     assert [(no, snap["triggered_by"]) for no, _, snap in got["revisions"]] == [(1, "run0"), (2, "run1")]
@@ -100,7 +100,7 @@ def test_multiple_rewrites_increment_revision_no(db):
 # ── rekap identik ─────────────────────────────────────────
 
 def test_identical_rerun_no_revision(db):
-    entries = [entry(UID_A, "FIKRI", opening=True), entry(UID_B, "FAHRIZAL", closing=True)]
+    entries = [entry(UID_A, "ANDI", opening=True), entry(UID_B, "SITI", closing=True)]
     save_recap_day(SRC, D, entries, "scheduler", TODAY)
     before = load()
 
@@ -115,12 +115,12 @@ def test_identical_rerun_no_revision(db):
 
 
 def test_display_name_only_change_updates_name_without_revision(db):
-    save_recap_day(SRC, D, [entry(UID_A, "FIKRY", opening=True)], "scheduler", TODAY)
-    res = save_recap_day(SRC, D, [entry(UID_A, "FIKRI AVISHENA", opening=True)], "panel:admin", TODAY)
+    save_recap_day(SRC, D, [entry(UID_A, "BUDY", opening=True)], "scheduler", TODAY)
+    res = save_recap_day(SRC, D, [entry(UID_A, "BUDI SANTOSO", opening=True)], "panel:admin", TODAY)
 
     assert res.status == UNCHANGED and res.names_updated == 1
     got = load()
-    assert got["entries"][UID_A][0] == "FIKRI AVISHENA"
+    assert got["entries"][UID_A][0] == "BUDI SANTOSO"
     assert got["revision_count"] == 0 and got["revisions"] == []
 
 
@@ -141,7 +141,7 @@ def test_empty_date_saved_with_zero_entries(db):
 
 
 def test_rerun_empty_clears_previous_data_with_revision(db):
-    save_recap_day(SRC, D, [entry(UID_A, "FIKRI", opening=True)], "scheduler", TODAY)
+    save_recap_day(SRC, D, [entry(UID_A, "ANDI", opening=True)], "scheduler", TODAY)
     res = save_recap_day(SRC, D, [], "panel:admin", TODAY)      # pesan sudah dihapus
     assert res.status == UPDATED
     got = load()
@@ -157,7 +157,7 @@ def test_empty_rerun_of_empty_is_unchanged(db):
 # ── tanggal di masa depan ─────────────────────────────────
 
 def test_future_date_skipped(db):
-    res = save_recap_day(SRC, date(2026, 11, 15), [entry(UID_A, "FIKRI", opening=True)], "panel:admin", TODAY)
+    res = save_recap_day(SRC, date(2026, 11, 15), [entry(UID_A, "ANDI", opening=True)], "panel:admin", TODAY)
     assert res.status == SKIPPED
     assert count(Recap) == 0 and count(Source) == 0
 
@@ -175,23 +175,23 @@ def _daily(**by_day):
 
 def test_range_saves_each_date_including_empty_and_future(db):
     daily = _daily(
-        d12={"FIKRI": {"uid": UID_A, "op": True, "cl": True, "op_late": False, "cl_late": False}},
-        d14={"FAHRIZAL": {"uid": UID_B, "op": False, "cl": False, "op_late": True, "cl_late": False}},
+        d12={UID_A: {"name": "ANDI", "op": True, "cl": True, "op_late": False, "cl_late": False}},
+        d14={UID_B: {"name": "SITI", "op": False, "cl": False, "op_late": True, "cl_late": False}},
     )
     res = save_recap_range(SRC, date(2026, 11, 12), date(2026, 11, 15), daily, "panel:admin", TODAY)
 
     assert [(r.recap_date.day, r.status) for r in res] == [
         (12, CREATED), (13, CREATED), (14, CREATED), (15, SKIPPED)]
-    assert load(date(2026, 11, 12))["entries"] == {UID_A: ("FIKRI", True, False, True, False)}
+    assert load(date(2026, 11, 12))["entries"] == {UID_A: ("ANDI", True, False, True, False)}
     assert load(date(2026, 11, 13))["entries"] == {}
-    assert load(date(2026, 11, 14))["entries"] == {UID_B: ("FAHRIZAL", False, True, False, False)}
+    assert load(date(2026, 11, 14))["entries"] == {UID_B: ("SITI", False, True, False, False)}
 
 
 def test_range_rerun_mixed_statuses(db):
-    d12 = {"FIKRI": {"uid": UID_A, "op": True, "cl": False, "op_late": False, "cl_late": False}}
+    d12 = {UID_A: {"name": "ANDI", "op": True, "cl": False, "op_late": False, "cl_late": False}}
     save_recap_range(SRC, date(2026, 11, 12), date(2026, 11, 13), _daily(d12=d12), "scheduler", TODAY)
 
-    d13 = {"FIKRI": {"uid": UID_A, "op": False, "cl": True, "op_late": False, "cl_late": False}}
+    d13 = {UID_A: {"name": "ANDI", "op": False, "cl": True, "op_late": False, "cl_late": False}}
     res = save_recap_range(SRC, date(2026, 11, 12), date(2026, 11, 13), _daily(d12=d12, d13=d13), "panel:admin", TODAY)
     assert [r.status for r in res] == [UNCHANGED, UPDATED]
 
@@ -213,9 +213,31 @@ def test_range_error_on_one_date_does_not_cancel_others(db, monkeypatch, caplog)
     assert "Gagal menyimpan rekap" in caplog.text
 
 
-def test_entries_from_day_data_requires_uid():
+def test_entries_from_day_data_requires_name():
     with pytest.raises(ValueError):
-        entries_from_day_data({"FIKRI": {"op": True}})
+        entries_from_day_data({UID_A: {"op": True}})
+
+
+def test_entries_from_day_data_keyed_by_uid_keeps_same_names_apart():
+    entries = entries_from_day_data({
+        UID_A: {"name": "BUDI", "op": True,  "cl": False, "op_late": False, "cl_late": False},
+        UID_B: {"name": "BUDI", "op": False, "cl": True,  "op_late": False, "cl_late": False},
+    })
+    assert sorted((e.discord_user_id, e.display_name, e.opening, e.closing) for e in entries) == [
+        (UID_A, "BUDI", True, False), (UID_B, "BUDI", False, True)]
+
+
+def test_two_uids_same_name_saved_as_two_entries(db):
+    daily = {D: {
+        UID_A: {"name": "BUDI", "op": True,  "cl": False, "op_late": False, "cl_late": False},
+        UID_B: {"name": "BUDI", "op": False, "cl": False, "op_late": False, "cl_late": True},
+    }}
+    [res] = save_recap_range(SRC, D, D, daily, "scheduler", TODAY)
+    assert res.status == CREATED
+    assert load()["entries"] == {
+        UID_A: ("BUDI", True, False, False, False),
+        UID_B: ("BUDI", False, False, False, True),
+    }
 
 
 def test_duplicate_uid_rejected(db):
@@ -233,7 +255,7 @@ def test_concurrent_saves_same_date_are_serialized(db):
     def run(flags, who):
         try:
             barrier.wait()
-            results.append(save_recap_day(SRC, D, [entry(UID_A, "FIKRI", **flags)], who, TODAY))
+            results.append(save_recap_day(SRC, D, [entry(UID_A, "ANDI", **flags)], who, TODAY))
         except Exception as e:      # pragma: no cover - harus tidak terjadi
             errors.append(e)
 
