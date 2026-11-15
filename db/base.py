@@ -13,10 +13,10 @@ from datetime import datetime, timezone
 from typing import Iterator
 
 from sqlalchemy import Engine, create_engine, event
-from sqlalchemy.engine import make_url, URL
 from sqlalchemy.orm import Session, sessionmaker
 
-from config import BASE_DIR, DATABASE_URL
+from config import DATABASE_URL
+from db.url import resolve_url  # noqa: F401  (dipakai juga oleh migrations/env.py)
 
 _WRITE_OPT = "radsoft_begin_immediate"
 
@@ -24,19 +24,6 @@ _WRITE_OPT = "radsoft_begin_immediate"
 def utcnow() -> datetime:
     """Timestamp disimpan sebagai UTC naive (SQLite tidak punya tipe ber-zona)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def resolve_url(raw: str) -> URL:
-    """Path SQLite relatif → absolut terhadap folder proyek (bukan CWD)."""
-    url = make_url(raw)
-    if url.get_backend_name() == "sqlite":
-        db = url.database
-        if db and db != ":memory:" and not db.startswith("file:"):
-            from pathlib import Path
-            p = Path(db)
-            if not p.is_absolute():
-                url = url.set(database=str((BASE_DIR / p).resolve()))
-    return url
 
 
 def _install_sqlite_hooks(engine: Engine) -> None:

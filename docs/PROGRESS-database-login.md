@@ -15,13 +15,13 @@ Terakhir diperbarui: 2026-11-15
 | 5 | Integrasi ke alur rekap (scheduler & panel) | ✅ Selesai | `aec090e` |
 | 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ✅ Selesai | `d51142c` |
 | 7 | Halaman riwayat + export Excel dari DB | ✅ Selesai | `b117ab0` |
-| 8 | CLI pemetaan source → tim | ✅ Selesai | (belum di-commit) |
-| 9 | Skrip backup `scripts/backup_db.py` + cara restore | ⏳ Berikutnya | — |
-| 10 | Update `bot.http` dan README | ⬜ Belum | — |
+| 8 | CLI pemetaan source → tim | ✅ Selesai | `232375d` |
+| 9 | Skrip backup `scripts/backup_db.py` + cara restore | ✅ Selesai | (belum di-commit) |
+| 10 | Update `bot.http` dan README | ⏳ Berikutnya | — |
 
 PR: #6 (Langkah 1–4 sudah direview).
 
-Test saat ini: **179 passed** (`venv\Scripts\python -m pytest`).
+Test saat ini: **209 passed, 1 skipped** (symlink tidak didukung di Windows tanpa hak khusus) (`venv\Scripts\python -m pytest`).
 
 ---
 
@@ -49,6 +49,7 @@ Test saat ini: **179 passed** (`venv\Scripts\python -m pytest`).
 20. **Rentang filter/export** maksimal 366 hari (inklusif). Tanpa tanggal → 30 hari terakhir. Satu tanggal saja → dianggap satu hari itu.
 21. **Session**: `session.clear()` sebelum `login_user()` (cegah session fixation). `SESSION_LIFETIME_MINUTES` kosong = sampai browser ditutup; diisi = session permanen, habis setelah N menit tanpa request.
 22. **Tim** dibatasi ke `Produk` / `Implementor` / `Development` (case-insensitive, disimpan dengan kapitalisasi baku). `set-team` hanya untuk ID di `channel_ids` / `thread_ids`. Dropdown tim di panel selalu menampilkan ketiga tim.
+23. **Backup**: `scripts/backup_db.py` (backup API SQLite, nama bertimestamp WIB, integrity_check, retensi 14 hari berdasarkan timestamp di nama file). **Restore** lewat skrip `scripts/restore_db.py` (bukan langkah manual) karena urutannya krusial: salinan pre-restore dulu, `-wal`/`-shm` lama dihapus sebelum file DB diganti.
 
 ### ERD
 
@@ -244,7 +245,7 @@ Riwayat + export:
   - `tests/test_auth.py` (+11): session fixation, login gagal tidak menghapus session, session default vs `SESSION_LIFETIME_MINUTES`, parsing env.
 - Sudah dibuktikan: tanpa `session.clear()` test session fixation gagal; kalau urutan baris export diubah, 2 test export gagal.
 
-### Langkah 8 — CLI pemetaan source → tim (belum di-commit)
+### Langkah 8 — CLI pemetaan source → tim (`232375d`)
 
 Tambahan dari review Langkah 7 (N+1 query):
 - `services/recap_query.py`: `list_recaps` dan `export_xlsx` memakai `contains_eager(Recap.source)` (source sudah di-JOIN), `export_xlsx` + `selectinload(Recap.entries)`, `get_recap_detail` memakai `joinedload(source)` + `selectinload(entries, revisions)`.
@@ -263,17 +264,33 @@ Pemetaan tim:
 - `services/recap_query.py`: filter `team` case-insensitive (`produk` = `Produk`); `/api/sources` selalu mengembalikan ketiga tim baku (plus tim lain kalau ada di DB).
 - Test `tests/test_source_admin.py` (33): normalisasi tim (valid/invalid), set-team untuk source yang sudah ada / channel & thread yang belum direkap (kind dari config), nama sementara diganti saat rekap berikutnya dengan tim tetap, ID di luar config ditolak (termasuk source lama di DB), tim invalid tidak mengubah apa pun, clear-team (biasa / source lama / belum direkap / ID tidak dikenal), list-sources, CLI (output, error tim/ID/argumen), filter tim riwayat dan export langsung bekerja setelah pemetaan.
 
+### Langkah 9 — Backup & restore (belum di-commit)
+
+- `db/url.py` (baru): `resolve_url()` dipindah dari `db/base.py` supaya skrip bisa membaca `DATABASE_URL` tanpa membuat engine / memuat driver. `db/base.py` mengimpornya kembali (tidak ada perubahan perilaku).
+- `scripts/backup_db.py`:
+  - Path DB dari `DATABASE_URL` lewat `resolve_url` (relatif ke folder proyek). URL non-SQLite → pesan "Skrip ini hanya untuk SQLite..." (exit 1), tanpa crash walaupun driver PostgreSQL tidak terpasang.
+  - Backup lewat `sqlite3.Connection.backup` ke file sementara `.<nama>.tmp`, lalu `journal_mode=DELETE` (file tunggal, tanpa `-wal`/`-shm`), `PRAGMA integrity_check`, lalu rename atomik. Integritas gagal → file dihapus, exit 2.
+  - Nama: `backups/radsoftbot_YYYY-MM-DD_HHMM.db` (waktu **WIB**); dua backup di menit yang sama → `..._HHMM_2.db`.
+  - Retensi `--keep-days N` (default 14, minimal 1): hapus backup yang timestamp di **nama file**-nya lebih tua dari N hari. Hanya file biasa langsung di `backups/` yang cocok pola `radsoftbot_YYYY-MM-DD_HHMM[_n].db`; subfolder, symlink, file lain, dan salinan `pre-restore_*` tidak pernah disentuh.
+  - `--dry-run`: tidak mengubah apa pun (tidak membuat backup, tidak menghapus), hanya menampilkan rencana.
+  - Exit code: 0 sukses, 1 konfigurasi/argumen salah, 2 backup gagal.
+- `scripts/restore_db.py <file-backup> [--yes]` — dipilih skrip (bukan langkah manual) supaya urutannya tidak bisa terbalik:
+  1. validasi backup (integrity_check + tabel `alembic_version` ada),
+  2. cek bot tidak berjalan (port `WEB_HOST:WEB_PORT` masih menerima koneksi, atau DB dikunci untuk tulis) → batal,
+  3. konfirmasi: ketik `RESTORE` persis (dilewati dengan `--yes`; cek bot tetap jalan),
+  4. salinan DB saat ini → `backups/pre-restore_radsoftbot_YYYY-MM-DD_HHMMSS.db` (lewat backup API, termasuk isi `-wal`; tidak ikut retensi),
+  5. salin backup ke file sementara + integrity_check,
+  6. hapus `-wal`/`-shm` lama,
+  7. `os.replace` file DB,
+  8. tampilkan versi skema (kalau backup lebih lama: `alembic upgrade head`).
+- Test `tests/test_backup.py` (30 + 1 dilewati): resolusi path, URL non-SQLite (termasuk dijalankan sebagai proses terpisah tanpa driver PostgreSQL), nama file WIB + tabrakan menit, backup saat ada transaksi tulis terbuka (data di WAL ikut, data belum commit tidak ikut, file tunggal), integrity gagal → file dihapus + exit 2, DB tidak ada, retensi (hanya file cocok pola; subfolder/luar folder/pre-restore/pola salah aman; tepat 14 hari disimpan), `--keep-days`, dry-run (fungsi dan CLI), symlink diabaikan (dilewati di Windows), restore (data kembali, salinan pre-restore berisi data terakhir, DB langsung bisa dipakai), `-wal`/`-shm` sisa crash dihapus, konfirmasi harus tepat, batal saat bot berjalan, deteksi port dan lock DB, backup tidak valid ditolak, exit code CLI.
+- Sudah dibuktikan: kalau penghapusan `-wal`/`-shm` di restore dihilangkan, test "sisa crash saat DB hilang" gagal (di kasus lain SQLite sendiri ikut membersihkan saat membuat salinan pre-restore, jadi langkah ini pengaman lapis kedua).
+
 ---
 
 ## Yang belum dikerjakan
 
-### Langkah 9 — Backup (berikutnya)
-
-- `scripts/backup_db.py` memakai backup API SQLite (aman saat DB sedang dipakai).
-- Nama file bertimestamp di `backups/`, hapus file yang lebih dari 14 hari.
-- Cara restore: hentikan bot, salin file backup, hapus `-wal`/`-shm`, jalankan lagi.
-
-### Langkah 10 — Dokumentasi
+### Langkah 10 — Dokumentasi (berikutnya)
 
 - `bot.http`: request login di awal (ambil CSRF token dulu dari `/api/csrf-token`, lalu `POST /login` form-urlencoded, lalu token dari `/api/me` untuk header `X-CSRFToken`) dan endpoint baru. Health check lama (`GET /`) diganti `GET /healthz` karena `/` sekarang wajib login.
 - README: setup lokal, isi `.env`, migrasi, buat admin, jalankan bot dan panel, backup dan restore.
