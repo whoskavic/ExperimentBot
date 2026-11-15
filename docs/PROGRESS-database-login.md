@@ -12,16 +12,16 @@ Terakhir diperbarui: 2026-11-15
 | 2 | Perbaikan bug tengah malam di scheduler + test | ✅ Selesai | `06fa085` |
 | 3 | Layer database: engine, model, migrasi awal Alembic | ✅ Selesai | `951815f` |
 | 4 | Service simpan/rewrite + log revisi + cek identik + test | ✅ Selesai | `d2a69f8` |
-| 5 | Integrasi ke alur rekap (scheduler & panel) | ✅ Selesai | (belum di-commit) |
-| 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ⏳ Berikutnya | — |
-| 7 | Halaman riwayat + export Excel dari DB | ⬜ Belum | — |
+| 5 | Integrasi ke alur rekap (scheduler & panel) | ✅ Selesai | `aec090e` |
+| 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ✅ Selesai | (belum di-commit) |
+| 7 | Halaman riwayat + export Excel dari DB | ⏳ Berikutnya | — |
 | 8 | CLI pemetaan source → tim | ⬜ Belum | — |
 | 9 | Skrip backup `scripts/backup_db.py` + cara restore | ⬜ Belum | — |
 | 10 | Update `bot.http` dan README | ⬜ Belum | — |
 
 PR: #6 (Langkah 1–4 sudah direview).
 
-Test saat ini: **52 passed** (`venv\Scripts\python -m pytest`).
+Test saat ini: **96 passed** (`venv\Scripts\python -m pytest`).
 
 ---
 
@@ -153,7 +153,7 @@ erDiagram
 - Test (`tests/test_recap_store.py`, 17 kasus): simpan pertama, rewrite + snapshot, revisi berulang, rekap identik (urutan beda), perubahan nama saja, nama source berubah, tanggal kosong, mengosongkan data lama, tanggal masa depan, hari ini, rentang tanggal (termasuk kosong & masa depan), rentang campuran, error satu tanggal, `uid` wajib, `uid` duplikat, dua penyimpanan bersamaan.
 - Sudah dibuktikan: tanpa `BEGIN IMMEDIATE`, test dua penyimpanan bersamaan gagal 4 dari 6 kali; dengan `BEGIN IMMEDIATE` selalu lolos.
 
-### Langkah 5 — Integrasi ke alur rekap (belum di-commit)
+### Langkah 5 — Integrasi ke alur rekap (`aec090e`)
 
 - `services/recap.py`:
   - `_collect_range` → `{date: {uid: {"name", "op", "cl", "op_late", "cl_late"}}}`. Logika filter dan flag tidak berubah.
@@ -194,23 +194,37 @@ Contoh response `POST /recap`:
 }
 ```
 
+### Langkah 6 — Login admin (belum di-commit)
+
+- Sebelum mulai: baris `all_ids` di `services/recap.py` yang tergabung di Langkah 5 dirapikan kembali menjadi dua baris.
+- `web/auth.py`:
+  - **Guard global** (`before_app_request`): semua request wajib login, kecuali `PUBLIC_ENDPOINTS` (`/login`, `/api/csrf-token`, `/healthz`) dan `PUBLIC_ASSETS` (`style.css`, `logo.jpg`, dipakai halaman login). Route baru otomatis ikut terlindungi.
+  - Belum login: navigasi halaman (GET selain `/api/`, `/static/`, `/recap`) → redirect `/login?next=...`; API, asset, dan semua POST → **401 JSON** `{"status": "error", "message": "Belum login."}`.
+  - Guard didaftarkan **sebelum** CSRFProtect, jadi request tanpa login dapat 401, bukan 400 CSRF.
+  - Login: hash `werkzeug` (scrypt). Username yang tidak ada tetap dicek ke hash dummy supaya waktu respons tidak membocorkan username yang terdaftar. User nonaktif ditolak dan session lamanya ikut tidak berlaku. `last_login_at` dicatat.
+  - `next` hanya menerima path lokal (mencegah open redirect).
+  - Logout: `POST /logout` (wajib CSRF), `GET` → 405.
+  - CSRF: Flask-WTF `CSRFProtect` untuk semua POST. Form login memakai hidden field. `script.js` mengambil token dari `GET /api/me` dan mengirimnya lewat header `X-CSRFToken`. `WTF_CSRF_TIME_LIMIT=None`: token berlaku selama session, supaya panel yang dibiarkan terbuka lama tetap bisa dipakai.
+  - Rate limit: Flask-Limiter (memory), `LOGIN_RATE_LIMIT` (default `5 per minute` per IP), **hanya percobaan gagal yang dihitung**. Lewat batas → 429 dengan pesan di halaman login.
+  - Cookie session: HttpOnly, SameSite=Lax, Secure mengikuti `SESSION_COOKIE_SECURE`.
+  - CLI: `flask --app web.server create-admin` (prompt username + password dengan konfirmasi). Validasi: username 3–64 karakter `[A-Za-z0-9_.-]`, password minimal 8, username unik.
+- `web/server.py`: `static_folder=None` + route `/static/<path>` (ikut guard), `GET /healthz` publik, `triggered_by="panel:<username>"` (TODO dihapus).
+- `web/templates/login.html` + CSS login di `style.css`. `index.html`: semua asset ke `/static/...`, nama user + tombol LOGOUT di header.
+- `bot.py`: berhenti dengan pesan jelas kalau `SECRET_KEY` kosong.
+- `config.py` / `.env.example`: `LOGIN_RATE_LIMIT`.
+- Dependency baru: `Flask-Login` 0.6.3, `Flask-WTF` 1.3.0, `Flask-Limiter` 4.1.1.
+- Test:
+  - `tests/test_auth.py` (44): redirect halaman tanpa login (termasuk `next`), 401 JSON untuk API/asset/POST, route publik, path traversal, login benar (session, `last_login_at`, flag cookie), login salah/username tidak ada/password kosong, user nonaktif (login dan session lama), `next` lokal saja, password tersimpan sebagai hash, escape username di halaman login, rate limit setelah 5 gagal, login sukses tidak dihitung, CSRF ditolak (login, `/recap` tanpa token/token palsu, logout), logout, logout wajib POST, validasi `create_admin`, CLI `create-admin`.
+  - `tests/test_server_recap.py` diperbarui: wajib login + header CSRF, `triggered_by == "panel:admin"`.
+  - Fixture bersama di `tests/conftest.py`: `app`, `client`, `admin`, `auth_client`, `do_login()`, `get_csrf()`.
+- Sudah dibuktikan: kalau CSRFProtect didaftarkan sebelum guard login, 2 test "tanpa login → 401" gagal. CLI sungguhan sudah dicoba dengan DB sementara.
+- Catatan Windows: prompt password CLI membaca langsung dari konsol, jadi tidak bisa diisi lewat pipe. Saat diketik manual berjalan normal.
+
 ---
 
 ## Yang belum dikerjakan
 
-### Langkah 6 — Login admin (berikutnya)
-
-- Flask-Login, hash password dengan `werkzeug.security`.
-- CLI `create-admin` (tidak ada halaman register).
-- Halaman login (template Jinja) dan tombol logout. `last_login_at` dicatat.
-- CSRF: Flask-WTF `CSRFProtect`. Token diambil dari `GET /api/csrf-token` dan dikirim lewat header `X-CSRFToken`.
-- Rate limit login: Flask-Limiter dengan storage memory.
-- Semua route terlindungi, termasuk `POST /recap`. API yang belum login mendapat 401 JSON, dan `script.js` mengarahkan ke halaman login.
-- Static dipindah ke `/static/`.
-- Cookie session: HttpOnly, SameSite=Lax, Secure mengikuti `SESSION_COOKIE_SECURE`.
-- Dependency baru: `Flask-Login`, `Flask-WTF`, `Flask-Limiter`.
-
-### Langkah 7 — Halaman riwayat + export
+### Langkah 7 — Halaman riwayat + export (berikutnya)
 
 - Filter: tanggal, rentang, source, tim. Tampilkan jumlah revisi dan isi revisi.
 - Export Excel dari DB (dibuat di memori, tanpa file sementara), dengan kolom yang sama seperti Excel saat ini.
@@ -228,7 +242,7 @@ Contoh response `POST /recap`:
 
 ### Langkah 10 — Dokumentasi
 
-- `bot.http`: request login di awal (ambil CSRF token dulu) dan endpoint baru.
+- `bot.http`: request login di awal (ambil CSRF token dulu dari `/api/csrf-token`, lalu `POST /login` form-urlencoded, lalu token dari `/api/me` untuk header `X-CSRFToken`) dan endpoint baru. Health check lama (`GET /`) diganti `GET /healthz` karena `/` sekarang wajib login.
 - README: setup lokal, isi `.env`, migrasi, buat admin, jalankan bot dan panel, backup dan restore.
 
 ---

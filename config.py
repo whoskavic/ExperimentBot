@@ -46,6 +46,7 @@ RECAP_MINUTE         = _config.get("recap_minute", 59)
 WEB_HOST              = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT              = int(os.getenv("WEB_PORT", "8080"))
 SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", False)
+LOGIN_RATE_LIMIT      = os.getenv("LOGIN_RATE_LIMIT", "5 per minute")   # hanya percobaan gagal
 
 # ── database ──────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///radsoftbot.db")

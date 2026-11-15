@@ -32,8 +32,59 @@ function setMode(mode) {
   }
 }
 
+// ── Auth ──
+// Token CSRF diambil dari /api/me dan dikirim di header X-CSRFToken
+// pada setiap POST. Respons 401 → kembali ke halaman login.
+let csrfToken = null;
+
+function goToLogin() {
+  const next = window.location.pathname + window.location.search;
+  window.location.href = '/login' + (next && next !== '/' ? '?next=' + encodeURIComponent(next) : '');
+}
+
+async function loadMe() {
+  try {
+    const res = await fetch('/api/me', { credentials: 'same-origin' });
+    if (res.status === 401) return goToLogin();
+    const me = await res.json();
+    csrfToken = me.csrf_token;
+    document.getElementById('current-user').textContent = me.username;
+  } catch (err) {
+    addLog('Tidak dapat memuat sesi login.', 'err');
+  }
+}
+
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken || '' },
+    body: JSON.stringify(body || {}),
+  });
+  if (res.status === 401) {
+    goToLogin();
+    throw new Error('unauthorized');
+  }
+  return res;
+}
+
+async function logout() {
+  try {
+    await fetch('/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': csrfToken || '' },
+    });
+  } finally {
+    window.location.href = '/login';
+  }
+}
+
 // Init on load
-window.addEventListener('DOMContentLoaded', () => setMode('today'));
+window.addEventListener('DOMContentLoaded', () => {
+  setMode('today');
+  loadMe();
+});
 
 // ── Log ──
 function escapeHtml(s) {
@@ -91,11 +142,7 @@ async function triggerRecap() {
   addLog(`Menjalankan recap: ${label}`, 'run');
 
   try {
-    const res  = await fetch('/recap', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date_from: dateFrom, date_to: dateTo })
-    });
+    const res  = await postJson('/recap', { date_from: dateFrom, date_to: dateTo });
     const data = await res.json();
 
     if (res.ok && data.status === 'ok') {
@@ -107,7 +154,7 @@ async function triggerRecap() {
       addLog(`Gagal: ${data.message || 'Unknown error'}`, 'err');
     }
   } catch (err) {
-    addLog('Tidak dapat terhubung ke server bot.', 'err');
+    if (err.message !== 'unauthorized') addLog('Tidak dapat terhubung ke server bot.', 'err');
   }
 
   btn.disabled = false;

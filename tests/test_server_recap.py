@@ -20,7 +20,7 @@ def fake_discord(monkeypatch):
     loop.close()
 
 
-def test_post_recap_includes_save_report(fake_discord, monkeypatch):
+def test_post_recap_includes_save_report(auth_client, fake_discord, monkeypatch):
     calls = {}
     report = [{"source_id": "800000000000000001", "source": "channel a", "kind": "channel",
                "dates": [{"recap_date": "2026-11-12", "status": "created", "recap_id": 1,
@@ -37,26 +37,29 @@ def test_post_recap_includes_save_report(fake_discord, monkeypatch):
     monkeypatch.setattr(server, "run_all_recaps", fake_run_all)
     monkeypatch.setattr(server, "send_recaps", fake_send)
 
-    res = server.app.test_client().post("/recap", json={"date_from": "2026-11-12", "date_to": "2026-11-12"})
+    res = auth_client.post("/recap", json={"date_from": "2026-11-12", "date_to": "2026-11-12"},
+                           headers={"X-CSRFToken": auth_client.csrf})
     assert res.status_code == 200
     body = res.get_json()
     assert body["status"] == "ok"
     assert body["files"] == ["recap_2026-11-12_channel_a.xlsx", "recap_2026-11-12_all_channel.xlsx"]
     assert body["saved"] == report
-    assert calls["run"] == ("2026-11-12", "2026-11-12", "panel")
+    assert calls["run"] == ("2026-11-12", "2026-11-12", "panel:admin")
     assert calls["send"][0] == "dest"
 
 
-def test_post_recap_no_sources_returns_empty(fake_discord, monkeypatch):
+def test_post_recap_no_sources_returns_empty(auth_client, fake_discord, monkeypatch):
     async def fake_run_all(*a, **kw):
         return [], []
     monkeypatch.setattr(server, "run_all_recaps", fake_run_all)
 
-    body = server.app.test_client().post("/recap", json={}).get_json()
+    body = auth_client.post("/recap", json={}, headers={"X-CSRFToken": auth_client.csrf}).get_json()
     assert (body["status"], body["files"], body["saved"]) == ("ok", [], [])
 
 
-def test_post_recap_validation_unchanged():
-    c = server.app.test_client()
-    assert c.post("/recap", json={"date_from": "12-11-2026"}).status_code == 400
-    assert c.post("/recap", json={"date_from": "2026-11-13", "date_to": "2026-11-12"}).status_code == 400
+def test_post_recap_validation_unchanged(auth_client):
+    h = {"X-CSRFToken": auth_client.csrf}
+    r = auth_client.post("/recap", json={"date_from": "12-11-2026"}, headers=h)
+    assert r.status_code == 400 and "Format tanggal" in r.get_json()["message"]
+    r = auth_client.post("/recap", json={"date_from": "2026-11-13", "date_to": "2026-11-12"}, headers=h)
+    assert r.status_code == 400 and "date_from" in r.get_json()["message"]

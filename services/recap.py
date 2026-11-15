@@ -190,7 +190,8 @@ async def run_all_recaps(client, date_from: date, date_to: date,
       results     = [(filepath, source_channel)]  — dipakai send_recaps*
       save_report = [{source_id, source, kind, dates: [{recap_date, status, ...}]}]
     """
-    all_ids = [(cid, "channel") for cid in CHANNEL_IDS] +               [(tid, "thread")  for tid in THREAD_IDS]
+    all_ids = [(cid, "channel") for cid in CHANNEL_IDS] + \
+              [(tid, "thread")  for tid in THREAD_IDS]
 
     sources = []
     for source_id, kind in all_ids:

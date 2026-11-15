@@ -3,7 +3,7 @@ import sys
 import discord
 from threading import Thread
 
-from config import TOKEN, WEB_HOST, WEB_PORT
+from config import TOKEN, SECRET_KEY, WEB_HOST, WEB_PORT
 from services.scheduler import schedule_recap
 from web.server import app, init_app
 
@@ -36,6 +36,8 @@ async def on_ready():
 
 if not TOKEN:
     sys.exit("DISCORD_TOKEN belum diisi. Isi di .env (lihat .env.example).")
+if not SECRET_KEY:
+    sys.exit("SECRET_KEY belum diisi. Isi di .env (lihat .env.example).")
 
 init_app(client)   # inject discord client ke Flask
 keep_alive()

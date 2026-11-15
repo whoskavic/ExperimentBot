@@ -1,13 +1,21 @@
 import asyncio
 import traceback
 from datetime import date, datetime
+from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
+from flask_login import current_user
 
 from config import TZ, DESTINATION_CHANNEL
 from services.recap import run_all_recaps, send_recaps
+from web.auth import init_auth
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# static_folder=None: asset disajikan lewat route `static_files` di bawah,
+# supaya ikut dicek login (kecuali asset halaman login).
+app = Flask(__name__, static_folder=None, template_folder="templates")
+init_auth(app)
 
 # injected from bot.py at startup
 _discord_client = None
@@ -21,7 +29,18 @@ def init_app(discord_client):
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/static/<path:filename>")
+def static_files(filename):
+    return send_from_directory(STATIC_DIR, filename)
+
+
+@app.route("/healthz")
+def health():
+    """Publik, tanpa login: cek bahwa web panel hidup."""
+    return jsonify({"status": "ok"})
 
 
 @app.route("/recap", methods=["POST"])
@@ -32,6 +51,7 @@ def trigger_recap():
         "date_from": "2026-03-01",   ← opsional, default: hari ini
         "date_to":   "2026-03-09"    ← opsional, default: hari ini
     }
+    Wajib login + header X-CSRFToken.
     """
     body      = request.get_json(silent=True) or {}
     today_str = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -45,8 +65,10 @@ def trigger_recap():
     if date_from > date_to:
         return jsonify({"status": "error", "message": "date_from tidak boleh lebih besar dari date_to"}), 400
 
+    triggered_by = f"panel:{current_user.username}"
+
     future = asyncio.run_coroutine_threadsafe(
-        _do_recap(date_from, date_to),
+        _do_recap(date_from, date_to, triggered_by),
         _discord_client.loop
     )
 
@@ -60,16 +82,15 @@ def trigger_recap():
         return jsonify({"status": "error", "message": msg}), 500
 
 
-async def _do_recap(date_from: date, date_to: date) -> dict:
+async def _do_recap(date_from: date, date_to: date, triggered_by: str) -> dict:
     """
     Return: {"files": [nama file terkirim], "saved": save_report per source}
     save_report: [{source_id, source, kind, dates: [{recap_date, status, ...}]}]
     status: created | updated | unchanged | skipped | error
     """
     dest = _discord_client.get_channel(DESTINATION_CHANNEL)
-    # TODO Langkah 6: "panel:<username>" setelah ada login
     results, save_report = await run_all_recaps(_discord_client, date_from, date_to,
-                                                triggered_by="panel")
+                                                triggered_by=triggered_by)
 
     if not results:
         return {"files": [], "saved": save_report}

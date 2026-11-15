@@ -4,17 +4,21 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RADSOFT — Discord Service</title>
-  <link rel="icon" type="image/jpeg" href="logo.jpg"/>
+  <link rel="icon" type="image/jpeg" href="/static/logo.jpg"/>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
 <div class="shell">
 
   <header>
-    <img src="logo.jpg" alt="Logo Mitra" class="logo-mark"/>
+    <img src="/static/logo.jpg" alt="Logo Mitra" class="logo-mark"/>
     <div class="logo-text">RAD<span>SOFT</span></div>
     <div class="header-right">DISCORD SERVICE PANEL</div>
+    <div class="header-user">
+      <span id="current-user">…</span>
+      <button class="logout-btn" onclick="logout()">LOGOUT</button>
+    </div>
   </header>
 
   <!-- HOME -->
@@ -103,6 +107,6 @@
   </div>
 
 </div>
-<script src="script.js"></script>
+<script src="/static/script.js"></script>
 </body>
 </html>

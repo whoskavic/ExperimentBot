@@ -106,3 +106,17 @@ footer span{font-family:'DM Mono',monospace;font-size:10px;color:var(--border);l
   header,.home-hero,.service-section,.inner-header,.recap-hero,.recap-body,footer{padding-left:20px;padding-right:20px}
   .date-range{flex-direction:column}
 }
+/* login */
+.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 16px}
+.login-card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:18px;background:var(--card);border:1px solid var(--border);padding:36px 32px}
+.login-card h2{font-family:'Bebas Neue',sans-serif;font-size:40px;letter-spacing:3px;line-height:1}
+.login-card .btn-recap{justify-content:center;margin-top:6px}
+.date-group input[type="text"],.date-group input[type="password"]{background:#0f0a0b;border:1px solid var(--border);color:var(--white);font-family:'DM Mono',monospace;font-size:13px;padding:10px 14px;width:100%;outline:none;transition:border-color .2s}
+.date-group input[type="text"]:focus,.date-group input[type="password"]:focus{border-color:var(--red)}
+.login-error{border:1px solid var(--red);background:var(--red-dim);color:var(--white);font-size:13px;padding:10px 14px}
+
+/* user + logout di header */
+.header-user{display:flex;align-items:center;gap:12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--gray);letter-spacing:1px}
+.logout-btn{background:none;border:1px solid var(--border);color:var(--gray);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;padding:6px 12px;cursor:pointer;transition:color .2s,border-color .2s}
+.logout-btn:hover{color:var(--white);border-color:var(--red)}
+@media (max-width:600px){header{padding:20px 16px;flex-wrap:wrap}.header-right{display:none}.header-user{margin-left:auto}}
