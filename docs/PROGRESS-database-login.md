@@ -5,6 +5,8 @@ Terakhir diperbarui: 2026-11-15
 
 ## Ringkasan status
 
+**Semua langkah (0–10) selesai.** Tinggal commit Langkah 10, lalu ikuti [Checklist sebelum merge](#checklist-sebelum-merge).
+
 | Langkah | Isi | Status | Commit |
 |---|---|---|---|
 | 0 | Analisis kode, ERD, keputusan desain | ✅ Selesai | — |
@@ -16,8 +18,8 @@ Terakhir diperbarui: 2026-11-15
 | 6 | Login admin (CLI, login/logout, CSRF, rate limit, proteksi route) | ✅ Selesai | `d51142c` |
 | 7 | Halaman riwayat + export Excel dari DB | ✅ Selesai | `b117ab0` |
 | 8 | CLI pemetaan source → tim | ✅ Selesai | `232375d` |
-| 9 | Skrip backup `scripts/backup_db.py` + cara restore | ✅ Selesai | (belum di-commit) |
-| 10 | Update `bot.http` dan README | ⏳ Berikutnya | — |
+| 9 | Skrip backup `scripts/backup_db.py` + cara restore | ✅ Selesai | `25b4649` |
+| 10 | Update `bot.http` dan README | ✅ Selesai | (belum di-commit) |
 
 PR: #6 (Langkah 1–4 sudah direview).
 
@@ -264,7 +266,7 @@ Pemetaan tim:
 - `services/recap_query.py`: filter `team` case-insensitive (`produk` = `Produk`); `/api/sources` selalu mengembalikan ketiga tim baku (plus tim lain kalau ada di DB).
 - Test `tests/test_source_admin.py` (33): normalisasi tim (valid/invalid), set-team untuk source yang sudah ada / channel & thread yang belum direkap (kind dari config), nama sementara diganti saat rekap berikutnya dengan tim tetap, ID di luar config ditolak (termasuk source lama di DB), tim invalid tidak mengubah apa pun, clear-team (biasa / source lama / belum direkap / ID tidak dikenal), list-sources, CLI (output, error tim/ID/argumen), filter tim riwayat dan export langsung bekerja setelah pemetaan.
 
-### Langkah 9 — Backup & restore (belum di-commit)
+### Langkah 9 — Backup & restore (`25b4649`)
 
 - `db/url.py` (baru): `resolve_url()` dipindah dari `db/base.py` supaya skrip bisa membaca `DATABASE_URL` tanpa membuat engine / memuat driver. `db/base.py` mengimpornya kembali (tidak ada perubahan perilaku).
 - `scripts/backup_db.py`:
@@ -286,14 +288,12 @@ Pemetaan tim:
 - Test `tests/test_backup.py` (30 + 1 dilewati): resolusi path, URL non-SQLite (termasuk dijalankan sebagai proses terpisah tanpa driver PostgreSQL), nama file WIB + tabrakan menit, backup saat ada transaksi tulis terbuka (data di WAL ikut, data belum commit tidak ikut, file tunggal), integrity gagal → file dihapus + exit 2, DB tidak ada, retensi (hanya file cocok pola; subfolder/luar folder/pre-restore/pola salah aman; tepat 14 hari disimpan), `--keep-days`, dry-run (fungsi dan CLI), symlink diabaikan (dilewati di Windows), restore (data kembali, salinan pre-restore berisi data terakhir, DB langsung bisa dipakai), `-wal`/`-shm` sisa crash dihapus, konfirmasi harus tepat, batal saat bot berjalan, deteksi port dan lock DB, backup tidak valid ditolak, exit code CLI.
 - Sudah dibuktikan: kalau penghapusan `-wal`/`-shm` di restore dihilangkan, test "sisa crash saat DB hilang" gagal (di kasus lain SQLite sendiri ikut membersihkan saat membuat salinan pre-restore, jadi langkah ini pengaman lapis kedua).
 
----
+### Langkah 10 — Dokumentasi (belum di-commit)
 
-## Yang belum dikerjakan
-
-### Langkah 10 — Dokumentasi (berikutnya)
-
-- `bot.http`: request login di awal (ambil CSRF token dulu dari `/api/csrf-token`, lalu `POST /login` form-urlencoded, lalu token dari `/api/me` untuk header `X-CSRFToken`) dan endpoint baru. Health check lama (`GET /`) diganti `GET /healthz` karena `/` sekarang wajib login.
-- README: setup lokal, isi `.env`, migrasi, buat admin, jalankan bot dan panel, backup dan restore.
+- `bot.http` ditulis ulang, urut: health check → [gagal] tanpa login 401 → token CSRF → login (form, `# @prompt password`, password tidak ditulis di file) → `/api/me` (token CSRF sesi) → `POST /recap` hari ini / satu tanggal / rentang → [gagal] tanpa CSRF 400 → `/api/sources` → `/api/recaps` (default, rentang + pagination, filter tim, filter source, [gagal] > 366 hari) → detail → export → logout → [gagal] 401 setelah logout. Variabel `@baseUrl`, `@username`, tanggal contoh di atas file.
+- Diverifikasi end-to-end ke server Flask sungguhan (DB sementara, tanpa Discord) dengan urutan yang sama: 18 pengecekan lolos. `POST /recap` yang sukses (6a–6c) tidak bisa diuji tanpa koneksi Discord.
+- `README.md` ditulis ulang (bahasa Indonesia): fitur, setup Windows + catatan Linux, tabel variabel `.env`, cara kerja rekap & status simpan, halaman riwayat, CLI tim, backup & restore (penjadwalan otomatis belum ada), test, struktur folder, catatan keamanan, troubleshooting. Contoh ID/nama di README lama yang asli diganti data fiktif.
+- Semua perintah README dijalankan di PowerShell dengan venv aktif (DB sementara): generate `SECRET_KEY`, `alembic upgrade head`, `flask --app web.server create-admin` / `--help` / `set-team --help` / `clear-team --help`, `scripts\backup_db.py` (`--dry-run`, `--keep-days`), `scripts\restore_db.py --help`, `pip install -r requirements-dev.txt`, `pytest`; pesan troubleshooting `no such table` dan `SECRET_KEY belum diisi` dicocokkan dengan output asli. `python bot.py` (sukses) dan `list-sources` tidak dijalankan karena memakai token / ID channel asli.
 
 ---
 
@@ -301,9 +301,39 @@ Pemetaan tim:
 
 - [ ] **Reset token bot** di Discord Developer Portal, lalu simpan token baru hanya di `.env` dan hapus `bot_token` dari `appsettings.json`.
 - [ ] **Buat `.env`** dari `.env.example` dan isi `SECRET_KEY` (`python -c "import secrets; print(secrets.token_hex(32))"`).
-- [ ] **Data asli di riwayat git**: commit `d2a69f8` (sudah di PR #6) berisi 2 Discord ID + nama karyawan asli di `tests/test_recap_store.py`. Sudah diganti di working tree, tapi masih ada di riwayat branch. Putuskan: rewrite riwayat branch sebelum merge, atau terima. `README.md` di `master` juga berisi 1 pasangan ID + nama asli (akan diganti di Langkah 10).
+- [ ] **Data asli di riwayat git**: commit `d2a69f8` (sudah di PR #6) berisi 2 Discord ID + nama karyawan asli di `tests/test_recap_store.py`. Sudah diganti di working tree, tapi masih ada di riwayat branch. Putuskan: rewrite riwayat branch sebelum merge, atau terima. Pasangan ID + nama asli di `README.md` lama sudah diganti di Langkah 10 (tapi tetap ada di riwayat `master`).
 - [ ] **Pemetaan tim** (Produk / Implementor / Development): CLI sudah tersedia (Langkah 8). Tinggal jalankan `list-sources` lalu `set-team` untuk setiap channel/thread.
 - [ ] Buka PR ke `master` setelah semua langkah selesai (atau Draft PR lebih dulu). Jangan merge tanpa review.
+
+## Checklist sebelum merge
+
+Semua dijalankan di branch `feature/database-login`.
+
+**Kode & test**
+- [ ] `git status` bersih, semua langkah ter-commit (isi hash Langkah 10 di tabel status).
+- [ ] `pip install -r requirements-dev.txt` lalu `pytest` → semua lolos.
+- [ ] `alembic check` → *No new upgrade operations detected* (model = migrasi).
+
+**Keamanan (repo public)**
+- [ ] `git ls-files | Select-String -Pattern "\.env$|appsettings\.json|user\.json|\.db"` (PowerShell) → **tidak ada output** (file `*.example*` tidak cocok pola ini).
+- [ ] Tidak ada ID / nama asli di file yang di-track (scan dengan skrip yang membaca `user.json` dan `appsettings.json` lalu hanya mencetak nama file yang cocok).
+- [ ] Putuskan soal data asli di riwayat commit `d2a69f8` (lihat "Hal yang masih terbuka").
+- [ ] Token bot sudah di-reset dan hanya ada di `.env`; `bot_token` dihapus dari `appsettings.json` lokal.
+
+**Uji manual di lokal**
+- [ ] `alembic upgrade head` pada `radsoftbot.db` asli, buat admin, `python bot.py` jalan tanpa error.
+- [ ] Buka http://127.0.0.1:8080 → diarahkan ke login; login salah 6x → pesan rate limit; login benar → panel.
+- [ ] RECAP NOW (hari ini dan rentang) → Excel terkirim ke Discord seperti biasa, log panel menampilkan status simpan.
+- [ ] Rekap ulang tanggal yang sama setelah mengedit/menghapus pesan → status `updated`, revisi terlihat di DETAIL.
+- [ ] Riwayat: filter tanggal / source / tim, pagination, EXPORT EXCEL (sheet Recap sama dengan Excel Discord, waktu WIB di sheet Info).
+- [ ] `flask --app web.server list-sources` lalu `set-team` untuk setiap channel/thread; filter tim di riwayat bekerja.
+- [ ] `python scripts\backup_db.py` saat bot berjalan → file di `backups\`; uji `restore_db.py` dengan bot dihentikan.
+- [ ] Rekap terjadwal: set `recap_hour`/`recap_minute` 1–2 menit ke depan, pastikan terkirim dan tersimpan (`last_triggered_by = scheduler`), lalu kembalikan ke 23:59.
+- [ ] `bot.http`: jalankan dari atas ke bawah, request [HARUS GAGAL] memang gagal.
+
+**PR**
+- [ ] Deskripsi PR #6 diperbarui (ringkasan Langkah 1–10, cara uji, catatan migrasi: jalankan `alembic upgrade head` + `create-admin` setelah pull).
+- [ ] Review selesai, baru merge ke `master`.
 
 ## Aturan kerja
 
