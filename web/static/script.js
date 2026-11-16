@@ -150,6 +150,10 @@ async function triggerRecap() {
       (data.files || []).forEach(f => addLog(`  ✓ ${f}`, 'ok'));
       addLog('File dikirim ke destination channel Discord.', 'ok');
       logSaveReport(data.saved);
+      // Rekap bisa menambah source baru → segarkan dropdown Riwayat (tidak memblokir).
+      refreshSourceOptions().catch(err => {
+        if (err.message !== 'unauthorized') addLog(`Gagal memperbarui daftar source: ${err.message}`, 'err');
+      });
     } else {
       addLog(`Gagal: ${data.message || 'Unknown error'}`, 'err');
     }
@@ -160,6 +164,7 @@ async function triggerRecap() {
   btn.disabled = false;
   btn.innerHTML = '▶ RECAP NOW';
 }
+
 // ════════════════════════════════════════════════════════
 // Riwayat rekap (data dari database)
 // Semua teks dari server dimasukkan lewat textContent (aman dari XSS).
@@ -171,7 +176,9 @@ const FLAG_LABELS = [
 ];
 const DIFF_LABELS = { same: 'sama', changed: 'berubah', added: 'baru', removed: 'dihapus' };
 
-const historyState = { page: 1, pages: 1, loadedSources: false };
+// datesInitialized: tanggal default (30 hari terakhir) hanya diisi sekali,
+// supaya filter yang sudah diubah user tidak ter-reset saat halaman dibuka lagi.
+const historyState = { page: 1, pages: 1, datesInitialized: false };
 
 function el(tag, attrs, ...children) {
   const node = document.createElement(tag);
@@ -214,25 +221,42 @@ function historyParams() {
   return p;
 }
 
+// Isi ulang <select> dari nol: option pertama ("Semua ...") + daftar baru.
+// Pilihan sebelumnya dipertahankan kalau masih ada di daftar baru.
+function fillSelect(select, firstLabel, options) {
+  const previous = select.value;
+  select.replaceChildren(
+    el('option', { value: '' }, firstLabel),
+    ...options.map(([value, label]) => el('option', { value: String(value) }, label)),
+  );
+  select.value = Array.from(select.options).some(o => o.value === previous) ? previous : '';
+}
+
+// Muat ulang daftar source + tim dari /api/sources.
+// Dipanggil setiap halaman Riwayat dibuka dan setelah RECAP NOW selesai
+// (rekap bisa menambah source baru, mis. thread yang baru pertama kali direkap).
+async function refreshSourceOptions() {
+  const data = await getJson('/api/sources');
+  fillSelect(document.getElementById('h-source'), 'Semua source',
+    data.sources.map(s => [s.id, s.kind === 'thread' ? `${s.name} (thread)` : `#${s.name}`]));
+  fillSelect(document.getElementById('h-team'), 'Semua tim',
+    [...data.teams.map(t => [t, t]), ['__none__', '(tanpa tim)']]);
+}
+
 async function openHistory() {
   goTo('page-history');
-  if (!historyState.loadedSources) {
+  if (!historyState.datesInitialized) {
     const to = todayStr();
     const from = new Date(Date.now() - 29 * 86400000).toLocaleDateString('sv-SE');
     document.getElementById('h-from').value = from;
     document.getElementById('h-to').value = to;
-    try {
-      const data = await getJson('/api/sources');
-      const srcSel = document.getElementById('h-source');
-      data.sources.forEach(s => srcSel.appendChild(
-        el('option', { value: s.id }, `${s.kind === 'thread' ? '🧵 ' : '#'}${s.name}`)));
-      const teamSel = document.getElementById('h-team');
-      data.teams.forEach(t => teamSel.appendChild(el('option', { value: t }, t)));
-      teamSel.appendChild(el('option', { value: '__none__' }, '(tanpa tim)'));
-      historyState.loadedSources = true;
-    } catch (err) {
-      if (err.message !== 'unauthorized') historyMessage(`Gagal memuat daftar source: ${err.message}`, true);
-    }
+    historyState.datesInitialized = true;
+  }
+  try {
+    await refreshSourceOptions();
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    historyMessage(`Gagal memuat daftar source: ${err.message}`, true);
   }
   loadHistory(1);
 }
