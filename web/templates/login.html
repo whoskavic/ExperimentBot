@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login — RADSOFT</title>
+  <link rel="icon" type="image/jpeg" href="/static/logo.jpg"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <img src="/static/logo.jpg" alt="Logo Mitra" class="logo-mark"/>
+    <div class="logo-text">RAD<span>SOFT</span></div>
+    <div class="header-right">DISCORD SERVICE PANEL</div>
+  </header>
+
+  <main class="login-wrap">
+    <form class="login-card fade-up" method="post" action="{{ url_for('auth.login') }}" autocomplete="on">
+      <div class="eyebrow">Admin</div>
+      <h2>LOGIN</h2>
+
+      {% if error %}
+      <div class="login-error" role="alert">{{ error }}</div>
+      {% endif %}
+
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="next" value="{{ next or '' }}"/>
+
+      <div class="date-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{ username or '' }}"
+               autocomplete="username" required autofocus/>
+      </div>
+      <div class="date-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required/>
+      </div>
+
+      <button type="submit" class="btn-recap">MASUK</button>
+    </form>
+  </main>
+
+  <footer>
+    <span>© RADSOFT 2026</span>
+  </footer>
+</div>
+</body>
+</html>

@@ -21,3 +21,16 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+# Secrets & local config (repo ini PUBLIC)
+.env
+appsettings.json
+user.json
+
+# Database & backup
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+backups/

@@ -2,3 +2,9 @@ discord.py
 flask
 pytz
 openpyxl
+python-dotenv
+SQLAlchemy>=2.0
+alembic
+Flask-Login
+Flask-WTF
+Flask-Limiter

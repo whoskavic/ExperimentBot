@@ -4,17 +4,21 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RADSOFT — Discord Service</title>
-  <link rel="icon" type="image/jpeg" href="logo.jpg"/>
+  <link rel="icon" type="image/jpeg" href="/static/logo.jpg"/>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
 <div class="shell">
 
   <header>
-    <img src="logo.jpg" alt="Logo Mitra" class="logo-mark"/>
+    <img src="/static/logo.jpg" alt="Logo Mitra" class="logo-mark"/>
     <div class="logo-text">RAD<span>SOFT</span></div>
     <div class="header-right">DISCORD SERVICE PANEL</div>
+    <div class="header-user">
+      <span id="current-user">…</span>
+      <button class="logout-btn" onclick="logout()">LOGOUT</button>
+    </div>
   </header>
 
   <!-- HOME -->
@@ -32,6 +36,14 @@
           <div class="service-info">
             <div class="service-name">DAILY TASK RECAP</div>
             <div class="service-desc">Rekap otomatis opening &amp; closing dari channel Discord</div>
+          </div>
+          <span class="service-arrow">→</span>
+        </div>
+        <div class="service-card fade-up d3" onclick="openHistory()">
+          <span class="service-num">02</span>
+          <div class="service-info">
+            <div class="service-name">RIWAYAT REKAP</div>
+            <div class="service-desc">Lihat rekap tersimpan, revisi, dan export Excel dari database</div>
           </div>
           <span class="service-arrow">→</span>
         </div>
@@ -102,7 +114,81 @@
     </footer>
   </div>
 
+  <!-- HISTORY PAGE -->
+  <div class="page" id="page-history">
+    <div class="inner-header">
+      <button class="back-btn" onclick="goTo('page-home')">← BACK</button>
+    </div>
+    <div class="recap-hero">
+      <div class="eyebrow">Service 02</div>
+      <h2>RIWAYAT REKAP</h2>
+      <p>Rekap yang tersimpan di database. Waktu ditampilkan dalam WIB.</p>
+    </div>
+
+    <div class="recap-body">
+      <div class="action-card fade-up">
+        <div class="action-title">Filter</div>
+        <div class="filter-grid">
+          <div class="date-group">
+            <label for="h-from">Date From</label>
+            <input type="date" id="h-from"/>
+          </div>
+          <div class="date-group">
+            <label for="h-to">Date To</label>
+            <input type="date" id="h-to"/>
+          </div>
+          <div class="date-group">
+            <label for="h-source">Source</label>
+            <select id="h-source"><option value="">Semua source</option></select>
+          </div>
+          <div class="date-group">
+            <label for="h-team">Tim</label>
+            <select id="h-team"><option value="">Semua tim</option></select>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button class="btn-recap" onclick="loadHistory(1)">CARI</button>
+          <button class="btn-secondary" onclick="exportHistory()">EXPORT EXCEL</button>
+        </div>
+        <div class="action-desc" id="h-message"></div>
+      </div>
+
+      <div class="status-box">
+        <div class="status-label" id="h-summary">Hasil</div>
+        <div class="table-wrap">
+          <table class="data-table" id="h-table">
+            <thead>
+              <tr>
+                <th>Tanggal</th><th>Source</th><th>Tim</th><th>Entri</th>
+                <th>Revisi</th><th>Terakhir oleh</th><th>Diperbarui (WIB)</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <button class="mode-btn" id="h-prev" onclick="loadHistory(historyState.page - 1)">← SEBELUMNYA</button>
+          <span id="h-page">–</span>
+          <button class="mode-btn" id="h-next" onclick="loadHistory(historyState.page + 1)">BERIKUTNYA →</button>
+        </div>
+      </div>
+
+      <div class="status-box" id="h-detail" hidden>
+        <div class="detail-head">
+          <div class="status-label" id="h-detail-title">Detail</div>
+          <button class="back-btn" onclick="closeDetail()">TUTUP</button>
+        </div>
+        <div id="h-detail-body"></div>
+      </div>
+    </div>
+
+    <footer>
+      <span>© RADSOFT 2026</span>
+      <span class="status-dot">SERVICE ONLINE</span>
+    </footer>
+  </div>
+
 </div>
-<script src="script.js"></script>
+<script src="/static/script.js"></script>
 </body>
 </html>
